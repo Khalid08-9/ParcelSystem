@@ -18,7 +18,7 @@ std::string  recipientID;
 std::string deliveryAddress;
 ParcelType type;
 ParcelStatus status ;
-std::time_t arrivalTime =0;
+std::time_t arrivalTime = 0;
 std::string requestID;
 std::string resourceID;
 Parcel* next=nullptr;

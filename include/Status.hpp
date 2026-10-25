@@ -13,7 +13,6 @@ enum class ParcelStatus {
     Collected,
     Delivered,
     Returned,
-    Returned,
     Cancelled
 };
 
