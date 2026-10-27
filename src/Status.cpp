@@ -44,3 +44,54 @@ std::string typeToString(ParcelType t) {
             return "Unknown";
     }
 }
+
+bool canTransition(ParcelStatus from, ParcelStatus to) {
+    switch (from) {
+        case ParcelStatus::Registered:
+            return to == ParcelStatus::ReadyForCollection ||
+                   to == ParcelStatus::OutForDelivery ||
+                   to == ParcelStatus::SpecialHandling ||
+                   to == ParcelStatus::ReturnToSender ||
+                   to == ParcelStatus::OnHold ||
+                   to == ParcelStatus::Missing;
+
+        case ParcelStatus::SpecialHandling:
+            return to == ParcelStatus::ReadyForCollection ||
+                   to == ParcelStatus::OutForDelivery ||
+                   to == ParcelStatus::ReturnToSender ||
+                   to == ParcelStatus::OnHold;
+
+        case ParcelStatus::OnHold:
+            return to == ParcelStatus::Registered ||
+                   to == ParcelStatus::ReturnToSender ||
+                   to == ParcelStatus::Missing ||
+                   to == ParcelStatus::Cancelled;
+
+        case ParcelStatus::ReadyForCollection:
+            return to == ParcelStatus::Collected ||
+                   to == ParcelStatus::ReturnToSender ||
+                   to == ParcelStatus::Missing;
+
+        case ParcelStatus::OutForDelivery:
+            return to == ParcelStatus::Delivered ||
+                   to == ParcelStatus::ReturnToSender ||
+                   to == ParcelStatus::Missing;
+
+        case ParcelStatus::ReturnToSender:
+            return to == ParcelStatus::Returned;
+
+        case ParcelStatus::Missing:
+            return to == ParcelStatus::OnHold ||
+                   to == ParcelStatus::Cancelled;
+
+        default:
+            return false;    // Collected, Delivered, Returned, Cancelled: final
+    }
+}
+
+bool isFinalStatus(ParcelStatus s) {
+    return s == ParcelStatus::Collected ||
+           s == ParcelStatus::Delivered ||
+           s == ParcelStatus::Returned ||
+           s == ParcelStatus::Cancelled;
+}
