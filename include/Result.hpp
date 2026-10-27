@@ -3,9 +3,9 @@
 
 
 
-enum class ResultCode {
+enum  ResultCode {
     Success, NotFound, Duplicate, InvalidInput,
     InvalidStatus, Empty, AlreadyCompleted
 };
 
-#endif;
+#endif

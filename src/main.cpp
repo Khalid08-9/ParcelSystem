@@ -1,54 +1,99 @@
 #include <iostream>
-#include "Parcel.hpp"
-#include "ParcelQueue.hpp"
+#include <limits>
+#include <string>
+#include "ParcelRegistry.hpp"
 
-// Prints PASS or FAIL for each check
-void check(const char* name, bool condition) {
-    std::cout << (condition ? "PASS: " : "FAIL: ") << name << "\n";
+// Prints a prompt and reads a whole line (names and addresses contain spaces)
+static std::string readLine(const std::string& prompt) {
+    std::string text;
+    std::cout << prompt;
+    std::getline(std::cin, text);
+    return text;
+}
+
+// Shows the parcel types as numbers and asks until a valid one is chosen
+static ParcelType readParcelType() {
+    int choice = 0;
+    while (true) {
+        std::cout << "Parcel type:\n"
+                  << "  1. Document\n"
+                  << "  2. Small\n"
+                  << "  3. Large\n"
+                  << "  4. Fragile\n"
+                  << "Choose (1-4): ";
+
+        if (std::cin >> choice && choice >= 1 && choice <= 4) {
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            switch (choice) {
+                case 1: return ParcelType::Document;
+                case 2: return ParcelType::Small;
+                case 3: return ParcelType::Large;
+                default: return ParcelType::Fragile;
+            }
+        }
+        std::cin.clear();   // bad input: reset the stream and discard the line
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        std::cout << "Invalid choice. Please enter a number from 1 to 4.\n\n";
+    }
+}
+
+// Asks for the parcel details, builds a Parcel and tries to register it
+static void registerParcelMenu(ParcelRegistry& registry) {
+    Parcel p;
+    std::cout << "\nREGISTER A NEW PARCEL\n";
+    p.parcelID        = readLine("Parcel ID: ");
+    p.recipientName   = readLine("Recipient name: ");
+    p.recipientID     = readLine("Recipient ID: ");
+    p.deliveryAddress = readLine("Delivery address: ");
+    p.type            = readParcelType();
+
+    ResultCode result = registry.registerParcel(p);
+
+    switch (result) {
+        case ResultCode::Success:
+            std::cout << "Parcel " << p.parcelID
+                      << " registered with status Registered.\n";
+            break;
+        case ResultCode::Duplicate:
+            std::cout << "Error: a parcel with ID " << p.parcelID
+                      << " already exists.\n";
+            break;
+        case ResultCode::InvalidInput:
+            std::cout << "Error: the ID, recipient name, recipient ID and "
+                         "address cannot be empty.\n";
+            break;
+        default:
+            std::cout << "Registration failed.\n";
+    }
 }
 
 int main() {
-    ParcelQueue q;
+    ParcelRegistry registry;
+    int choice = -1;
 
-    Parcel p1, p2, p3;
-    p1.parcelID = "P001";
-    p2.parcelID = "P002";
-    p3.parcelID = "P003";
+    while (choice != 0) {
+        std::cout << "\nSMART CAMPUS PARCEL SYSTEM\n";
+        std::cout << "==========================\n";
+        std::cout << "1. Register a parcel\n";
+        std::cout << "2. Display all parcels\n";
+        std::cout << "0. Exit\n";
+        std::cout << "Enter your choice: ";
 
-    // 1. A new queue is empty
-    check("new queue is empty", q.isEmpty());
-    check("size is 0", q.getSize() == 0);
-    check("peek on empty returns nullptr", q.peek() == nullptr);
-    check("dequeue on empty returns nullptr", q.dequeue() == nullptr);
+        if (!(std::cin >> choice)) {            // the user typed a non-number
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input.\n";
+            choice = -1;
+            continue;
+        }
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
-    // 2. Enqueue three parcels
-    q.enqueue(&p1);
-    q.enqueue(&p2);
-    q.enqueue(&p3);
-    check("not empty after enqueue", !q.isEmpty());
-    check("size is 3", q.getSize() == 3);
-    check("peek shows P001", q.peek() == &p1);
-    check("peek does not remove", q.getSize() == 3);
-
-    // 3. Dequeue keeps first-in, first-out order
-    check("dequeue gives P001", q.dequeue() == &p1);
-    check("size is 2", q.getSize() == 2);
-    check("dequeue gives P002", q.dequeue() == &p2);
-    check("dequeue gives P003", q.dequeue() == &p3);
-    check("empty again", q.isEmpty());
-    check("size is 0 again", q.getSize() == 0);
-
-    // 4. Reuse after emptying (checks that rear was reset)
-    q.enqueue(&p1);
-    check("enqueue after empty works", q.peek() == &p1);
-    q.enqueue(&p2);
-    check("order still correct", q.dequeue() == &p1 && q.dequeue() == &p2);
-
-    // 5. clear
-    q.enqueue(&p1);
-    q.enqueue(&p2);
-    q.clear();
-    check("clear empties the queue", q.isEmpty() && q.getSize() == 0);
-
+        switch (choice) {
+            case 1: registerParcelMenu(registry); break;
+            case 2: registry.displayAllParcels(); break;
+            case 0: std::cout << "Goodbye.\n"; break;
+            default: std::cout << "Invalid choice. Please try again.\n";
+        }
+    }
     return 0;
-};
+}

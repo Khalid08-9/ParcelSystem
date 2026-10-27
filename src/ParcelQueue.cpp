@@ -9,7 +9,7 @@ ParcelQueue::ParcelQueue() {
 
 bool ParcelQueue::isEmpty() const {
     return front == nullptr;
-};
+}
 
 
 
@@ -26,11 +26,8 @@ else{
     rear ->next=node;
     rear = node;
 }
-size++;
-};
-
-
-
+   size++;
+}
 
 
 Parcel* ParcelQueue::peek() const {
@@ -38,15 +35,12 @@ Parcel* ParcelQueue::peek() const {
         return nullptr;
     }
     return front->parcel;
-}
-
+};
 
 
 int ParcelQueue::getSize() const {
     return size;
 }
-
-
 
 Parcel* ParcelQueue::dequeue() {
     if (front == nullptr) {
@@ -81,6 +75,8 @@ void ParcelQueue::clear() {
 ParcelQueue::~ParcelQueue() {
     clear();
 }
+
+std::string typeToString(ParcelType t);
 
 
 

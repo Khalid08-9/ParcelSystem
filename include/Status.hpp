@@ -1,8 +1,8 @@
 #ifndef STATUS_HPP
 #define STATUS_HPP
+#include <string>
 
-
-enum class ParcelStatus {
+enum  ParcelStatus {
     Registered,
     ReadyForCollection,
     OutForDelivery,
@@ -19,6 +19,8 @@ enum class ParcelStatus {
 bool canTransition(ParcelStatus from, ParcelStatus to);
 
 bool isFinalStatus(ParcelStatus s);
+
+std::string statusToString(ParcelStatus s);
 
 #endif
 

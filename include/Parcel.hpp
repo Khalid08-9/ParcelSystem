@@ -4,7 +4,7 @@
 #include <ctime>
 #include "Status.hpp"
 
-enum class ParcelType {
+enum  ParcelType {
     Document,
     Small,
     Large,
