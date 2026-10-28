@@ -16,6 +16,7 @@ private:
     ParcelQueue specialQueue;
     ParcelQueue returnQueue;
     ParcelQueue holdQueue;
+    ParcelQueue* queueFor(ParcelStatus s); 
     int size;
 
 public:
@@ -30,6 +31,7 @@ public:
     void displayAllParcels() const ;
     ResultCode routeNextParcel(RouteAction action);
     ResultCode viewParcel(const std::string& parcelID) const;
+    ResultCode updateParcelStatus(const std::string& id, ParcelStatus newStatus);
     Parcel* peekWaiting() const;
     int waitingCount() const;
     int collectionCount() const;

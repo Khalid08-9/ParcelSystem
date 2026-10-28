@@ -1,5 +1,6 @@
 #include "ParcelRegistry.hpp"
-#include <Parcel.hpp>
+#include "Parcel.hpp"
+#include "ParcelQueue.hpp"
 #include <iostream>
 #include <string>
 #include <iomanip>
@@ -34,6 +35,9 @@ Parcel* ParcelRegistry::findParcel(const std::string& parcelID) const {
     }
     return nullptr;
 }
+
+
+
 
 
 
@@ -185,6 +189,7 @@ ResultCode ParcelRegistry::routeNextParcel(RouteAction action) {
 }
 
 
+
 ResultCode ParcelRegistry::viewParcel(const std::string& parcelID) const {
     if (isBlank(parcelID)) {
         return ResultCode::InvalidInput;
@@ -207,6 +212,82 @@ ResultCode ParcelRegistry::viewParcel(const std::string& parcelID) const {
               << "Request ID:       " << (p->requestID.empty() ? "None" : p->requestID) << "\n"
               << "Resource ID:      " << (p->resourceID.empty() ? "None" : p->resourceID) << "\n"
               << std::string(40, '-') << "\n";
+
+    return ResultCode::Success;
+}
+
+bool ParcelQueue::remove(Parcel* p) {
+    Queuenode* previous = nullptr;
+    Queuenode* current = front;
+
+    while (current != nullptr) {
+        if (current->parcel == p) {
+            // 1. Unlink the node
+            if (previous == nullptr) {
+                front = current->next;        // it was the front
+            } else {
+                previous->next = current->next;   // skip over it
+            }
+
+            // 2. If it was the last node, move rear back
+            if (current == rear) {
+                rear = previous;              // nullptr if the queue is now empty
+            }
+
+            // 3. Free the queue node (the Parcel itself is NOT deleted)
+            delete current;
+            size--;
+            return true;
+        }
+        previous = current;
+        current = current->next;
+    }
+    return false;               // p was not in this queue
+}
+
+ParcelQueue* ParcelRegistry::queueFor(ParcelStatus s) {
+    switch (s) {
+        case ParcelStatus::Registered:         return &waiting;
+        case ParcelStatus::ReadyForCollection: return &collectionQueue;
+        case ParcelStatus::OutForDelivery:     return &deliveryQueue;
+        case ParcelStatus::SpecialHandling:    return &specialQueue;
+        case ParcelStatus::ReturnToSender:     return &returnQueue;
+        case ParcelStatus::OnHold:             return &holdQueue;
+        default:                               return nullptr;   // Missing and final statuses
+    }
+}
+
+
+ResultCode ParcelRegistry::updateParcelStatus(const std::string& id, ParcelStatus newStatus) {
+    if (isBlank(id)) {
+        return ResultCode::InvalidInput;
+    }
+
+    Parcel* p = findParcel(id);
+    if (p == nullptr) {
+        return ResultCode::NotFound;
+    }
+
+    if (isFinalStatus(p->status)) {
+        return ResultCode::AlreadyCompleted;
+    }
+
+    if (!canTransition(p->status, newStatus)) {
+        return ResultCode::InvalidStatus;
+    }
+
+    // All checks passed, so now change things
+    ParcelQueue* oldQueue = queueFor(p->status);
+    if (oldQueue != nullptr) {
+        oldQueue->remove(p);
+    }
+
+    p->status = newStatus;
+
+    ParcelQueue* newQueue = queueFor(newStatus);
+    if (newQueue != nullptr) {
+        newQueue->enqueue(p);
+    }
 
     return ResultCode::Success;
 }

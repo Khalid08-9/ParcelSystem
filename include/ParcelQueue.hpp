@@ -26,6 +26,7 @@ class ParcelQueue
       Parcel* dequeue(); 
       Parcel* peek() const; 
       void clear(); 
+      bool remove(Parcel* p);   
     
 };
 
