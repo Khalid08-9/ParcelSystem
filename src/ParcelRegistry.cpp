@@ -4,9 +4,11 @@
 #include <iostream>
 #include <string>
 #include <iomanip>
+#include <sstream>
 #include <ctime>
 
-ParcelRegistry::ParcelRegistry() : head(nullptr), tail(nullptr), size(0) {}
+ParcelRegistry::ParcelRegistry()
+    : head(nullptr), tail(nullptr), nextParcelNumber(1), size(0) {}
 
 static bool isBlank(const std::string& text) {
     return text.find_first_not_of(" \t\r\n") == std::string::npos;
@@ -38,9 +40,6 @@ Parcel* ParcelRegistry::findParcel(const std::string& parcelID) const {
 
 
 
-
-
-
 void ParcelRegistry::clear() {
     waiting.clear();
     collectionQueue.clear();
@@ -57,6 +56,27 @@ void ParcelRegistry::clear() {
     size = 0;
 }
 
+
+ResultCode ParcelRegistry::registerParcel(const Parcel& newParcel, std::string& assignedID) {
+    assignedID = "";
+
+    if (isBlank(newParcel.recipientName) ||
+        isBlank(newParcel.recipientID) ||
+        isBlank(newParcel.deliveryAddress)) {
+        return ResultCode::InvalidInput;
+    }
+
+    Parcel parcelWithID = newParcel;
+    do {
+        parcelWithID.parcelID = generateParcelID();
+    } while (findParcel(parcelWithID.parcelID) != nullptr);
+
+    ResultCode result = registerParcel(parcelWithID);
+    if (result == ResultCode::Success) {
+        assignedID = parcelWithID.parcelID;
+    }
+    return result;
+}
 
 ResultCode ParcelRegistry::registerParcel(const Parcel& newParcel) {
     if (isBlank(newParcel.parcelID) ||
@@ -77,7 +97,6 @@ ResultCode ParcelRegistry::registerParcel(const Parcel& newParcel) {
     parcelCopy->resourceID = "";
     parcelCopy->next = nullptr;
 
-
     if (head == nullptr) {
         head = parcelCopy;
         tail = parcelCopy;
@@ -88,7 +107,13 @@ ResultCode ParcelRegistry::registerParcel(const Parcel& newParcel) {
 
     size++;
     waiting.enqueue(parcelCopy);
+
     return ResultCode::Success;
+}
+std::string ParcelRegistry::generateParcelID() {
+    std::ostringstream id;
+    id << "PCL" << std::setw(4) << std::setfill('0') << nextParcelNumber++;
+    return id.str();      // PCL0001, PCL0002, ...
 }
 
 static std::string formatTime(std::time_t t) {

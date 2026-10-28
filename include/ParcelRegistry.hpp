@@ -17,6 +17,8 @@ private:
     ParcelQueue returnQueue;
     ParcelQueue holdQueue;
     ParcelQueue* queueFor(ParcelStatus s); 
+    int nextParcelNumber;
+    std::string generateParcelID();
     int size;
 
 public:
@@ -24,7 +26,8 @@ public:
     ~ParcelRegistry();
 
     ResultCode registerParcel(const Parcel& newParcel);
-    Parcel* findParcel(const std::string& parcelID) const;
+    ResultCode registerParcel(const Parcel& newParcel, std::string& assignedID);
+ Parcel* findParcel(const std::string& parcelID) const;
     int  getSize() const;
     bool isEmpty() const;
     void clear();

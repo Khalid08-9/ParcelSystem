@@ -1,4 +1,16 @@
-
+// src/main.cpp
+// Console menu for the Smart Campus Parcel System (Task 1 + integration shell).
+//
+// Rules for this file:
+//  - It only reads input, prints messages and calls the registry.
+//  - It never touches head, tail or the queues directly.
+//  - Every ResultCode is turned into a message in ONE place (describe).
+//
+// Needs these public members in ParcelRegistry:
+//   registerParcel(parcel, assignedID), findParcel, viewParcel, displayAllParcels,
+//   routeNextParcel, updateParcelStatus,
+//   getSize, peekWaiting, waitingCount, collectionCount, deliveryCount,
+//   specialCount, returnCount, holdCount
 
 #include <iostream>
 #include <iomanip>
@@ -106,17 +118,19 @@ ParcelType readParcelType() {
 void registerParcelMenu(ParcelRegistry& registry) {
     printTitle("REGISTER A NEW PARCEL");
 
+    std::cout << "The Parcel ID is created automatically.\n";
+
     Parcel p;
-    p.parcelID        = readLine("Parcel ID: ");
     p.recipientName   = readLine("Recipient name: ");
     p.recipientID     = readLine("Recipient ID: ");
     p.deliveryAddress = readLine("Delivery address: ");
     p.type            = readParcelType();
 
-    ResultCode result = registry.registerParcel(p);
+    std::string assignedID;                       // filled in by the registry
+    ResultCode result = registry.registerParcel(p, assignedID);
     if (result == ResultCode::Success) {
-        std::cout << "Parcel " << p.parcelID
-                  << " registered with status Registered and added to the waiting queue.\n";
+        std::cout << "Parcel registered with ID " << assignedID
+                  << " (status Registered, added to the waiting queue).\n";
     } else {
         std::cout << describe(result) << "\n";
     }
@@ -206,6 +220,75 @@ void processAllMenu(ParcelRegistry& registry) {
     std::cout << routed << " parcel(s) routed.\n";
 }
 
+// ======================= Update =======================
+
+// Lists ONLY the statuses this parcel may move to (checked with canTransition),
+// and returns the one chosen; returns false if there is nothing to choose or
+// the user cancels.
+bool readStatus(ParcelStatus current, ParcelStatus& chosen) {
+    const ParcelStatus all[] = {
+        ParcelStatus::Registered,     ParcelStatus::ReadyForCollection,
+        ParcelStatus::OutForDelivery, ParcelStatus::SpecialHandling,
+        ParcelStatus::ReturnToSender, ParcelStatus::OnHold,
+        ParcelStatus::Missing,        ParcelStatus::Collected,
+        ParcelStatus::Delivered,      ParcelStatus::Returned,
+        ParcelStatus::Cancelled
+    };
+    const int total = 11;
+
+    ParcelStatus allowed[11];
+    int count = 0;
+    for (int i = 0; i < total; ++i) {
+        if (canTransition(current, all[i])) {
+            allowed[count++] = all[i];
+        }
+    }
+
+    if (count == 0) {
+        std::cout << "This parcel is in a final status. No change is possible.\n";
+        return false;
+    }
+
+    std::cout << "\nAllowed new statuses (current: " << statusToString(current) << "):\n";
+    for (int i = 0; i < count; ++i) {
+        std::cout << "  " << (i + 1) << ". " << statusToString(allowed[i]) << "\n";
+    }
+    std::cout << "  0. Cancel\n";
+
+    int choice = readInt("Choice: ", 0, count);
+    if (choice == 0) {
+        return false;
+    }
+    chosen = allowed[choice - 1];
+    return true;
+}
+
+void updateStatusMenu(ParcelRegistry& registry) {
+    printTitle("UPDATE PARCEL STATUS");
+
+    std::string id = readLine("Parcel ID: ");
+    ResultCode found = registry.viewParcel(id);   // shows the current details
+    if (found != ResultCode::Success) {
+        std::cout << describe(found) << "\n";
+        return;
+    }
+
+    ParcelStatus current = registry.findParcel(id)->status;
+    ParcelStatus newStatus = current;
+    if (!readStatus(current, newStatus)) {
+        std::cout << "Nothing was changed.\n";
+        return;
+    }
+
+    ResultCode result = registry.updateParcelStatus(id, newStatus);
+    if (result == ResultCode::Success) {
+        std::cout << "Parcel " << id << " is now: "
+                  << statusToString(newStatus) << "\n";
+    } else {
+        std::cout << describe(result) << "\n";
+    }
+}
+
 // ======================= Main menu =======================
 
 void printMenu() {
@@ -217,6 +300,8 @@ void printMenu() {
               << "PROCESSING\n"
               << "  4. Process next parcel\n"
               << "  5. Process all waiting parcels\n"
+              << "UPDATES\n"
+              << "  6. Update a parcel's status\n"
               << "  0. Exit\n";
 }
 
@@ -230,12 +315,13 @@ int main() {
         showDashboard(registry);
         printMenu();
 
-        switch (readInt("Enter your choice (0-5): ", 0, 5)) {
+        switch (readInt("Enter your choice (0-6): ", 0, 6)) {
             case 1: registerParcelMenu(registry);   pressEnter(); break;
             case 2: registry.displayAllParcels();   pressEnter(); break;
             case 3: viewParcelMenu(registry);       pressEnter(); break;
             case 4: processNextMenu(registry);      pressEnter(); break;
             case 5: processAllMenu(registry);       pressEnter(); break;
+            case 6: updateStatusMenu(registry);     pressEnter(); break;
             case 0:
                 std::cout << "Goodbye.\n";
                 running = false;
