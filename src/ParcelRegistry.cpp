@@ -1,4 +1,5 @@
 #include "ParcelRegistry.hpp"
+#include <Parcel.hpp>
 #include <iostream>
 #include <string>
 #include <iomanip>
@@ -37,7 +38,12 @@ Parcel* ParcelRegistry::findParcel(const std::string& parcelID) const {
 
 
 void ParcelRegistry::clear() {
-    waiting.clear();          
+    waiting.clear();
+    collectionQueue.clear();
+    deliveryQueue.clear();
+    specialQueue.clear();
+    returnQueue.clear();
+    holdQueue.clear();
     while (head != nullptr) {
         Parcel* temp = head;
         head = head->next;
@@ -115,4 +121,120 @@ void ParcelRegistry::displayAllParcels() const {
 
     std::cout << std::string(80, '-') << "\n";
     std::cout << "Total parcels: " << size << "\n";
+}
+
+ResultCode ParcelRegistry::routeNextParcel(RouteAction action) {
+    if (waiting.isEmpty()) {
+        return ResultCode::Empty;
+    }
+
+    Parcel* p = waiting.peek();            // look only, do not remove yet
+
+    if (isFinalStatus(p->status)) {
+        return ResultCode::AlreadyCompleted;
+    }
+
+    // Work out the new status
+    ParcelStatus newStatus = p->status;
+    switch (action) {
+        case RouteAction::ReturnToSender:
+            newStatus = ParcelStatus::ReturnToSender;
+            break;
+        case RouteAction::OnHold:
+            newStatus = ParcelStatus::OnHold;
+            break;
+        case RouteAction::Missing:
+            newStatus = ParcelStatus::Missing;
+            break;
+        case RouteAction::Default:
+        default:
+            switch (p->type) {
+                case ParcelType::Document:
+                case ParcelType::Small:
+                    newStatus = ParcelStatus::ReadyForCollection;
+                    break;
+                case ParcelType::Large:
+                    newStatus = ParcelStatus::OutForDelivery;
+                    break;
+                case ParcelType::Fragile:
+                    newStatus = ParcelStatus::SpecialHandling;
+                    break;
+            }
+            break;
+    }
+
+    // Check the rule. If it fails, nothing has changed.
+    if (!canTransition(p->status, newStatus)) {
+        return ResultCode::InvalidStatus;
+    }
+
+    // Everything is valid, so now change things
+    waiting.dequeue();
+    p->status = newStatus;
+
+    switch (newStatus) {
+        case ParcelStatus::ReadyForCollection: collectionQueue.enqueue(p); break;
+        case ParcelStatus::OutForDelivery:     deliveryQueue.enqueue(p);   break;
+        case ParcelStatus::SpecialHandling:    specialQueue.enqueue(p);    break;
+        case ParcelStatus::ReturnToSender:     returnQueue.enqueue(p);     break;
+        case ParcelStatus::OnHold:             holdQueue.enqueue(p);       break;
+        default: break;   // Missing: stays in the registry only
+    }
+// Missing: stays in the registry only
+    return ResultCode::Success;
+}
+
+
+ResultCode ParcelRegistry::viewParcel(const std::string& parcelID) const {
+    if (isBlank(parcelID)) {
+        return ResultCode::InvalidInput;
+    }
+
+    Parcel* p = findParcel(parcelID);
+    if (p == nullptr) {
+        return ResultCode::NotFound;
+    }
+
+    std::cout << "\nPARCEL DETAILS\n"
+              << std::string(40, '-') << "\n"
+              << "Parcel ID:        " << p->parcelID << "\n"
+              << "Recipient name:   " << p->recipientName << "\n"
+              << "Recipient ID:     " << p->recipientID << "\n"
+              << "Delivery address: " << p->deliveryAddress << "\n"
+              << "Type:             " << typeToString(p->type) << "\n"
+              << "Status:           " << statusToString(p->status) << "\n"
+              << "Arrival time:     " << formatTime(p->arrivalTime) << "\n"
+              << "Request ID:       " << (p->requestID.empty() ? "None" : p->requestID) << "\n"
+              << "Resource ID:      " << (p->resourceID.empty() ? "None" : p->resourceID) << "\n"
+              << std::string(40, '-') << "\n";
+
+    return ResultCode::Success;
+}
+
+Parcel* ParcelRegistry::peekWaiting() const {
+    return waiting.peek();
+}
+
+int ParcelRegistry::waitingCount() const {
+    return waiting.getSize();
+}
+
+int ParcelRegistry::collectionCount() const {
+    return collectionQueue.getSize();
+}
+
+int ParcelRegistry::deliveryCount() const {
+    return deliveryQueue.getSize();
+}
+
+int ParcelRegistry::specialCount() const {
+    return specialQueue.getSize();
+}
+
+int ParcelRegistry::returnCount() const {
+    return returnQueue.getSize();
+}
+
+int ParcelRegistry::holdCount() const {
+    return holdQueue.getSize();
 }

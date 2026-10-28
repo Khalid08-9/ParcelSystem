@@ -10,7 +10,13 @@ enum  ParcelType {
     Large,
     Fragile
 };
-
+std::string typeToString(ParcelType t);
+enum class RouteAction {
+    Default,
+    ReturnToSender,
+    OnHold,
+    Missing
+};
 struct Parcel{
 std::string parcelID;
 std::string recipientName;

@@ -11,6 +11,11 @@ private:
     Parcel* head;
     Parcel* tail;
     ParcelQueue waiting;
+    ParcelQueue collectionQueue;
+    ParcelQueue deliveryQueue;
+    ParcelQueue specialQueue;
+    ParcelQueue returnQueue;
+    ParcelQueue holdQueue;
     int size;
 
 public:
@@ -23,6 +28,15 @@ public:
     bool isEmpty() const;
     void clear();
     void displayAllParcels() const ;
+    ResultCode routeNextParcel(RouteAction action);
+    ResultCode viewParcel(const std::string& parcelID) const;
+    Parcel* peekWaiting() const;
+    int waitingCount() const;
+    int collectionCount() const;
+    int deliveryCount() const;
+    int specialCount() const;
+    int returnCount() const;
+    int holdCount() const;
    
 };
 
