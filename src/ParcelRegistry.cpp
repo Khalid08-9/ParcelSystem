@@ -317,6 +317,78 @@ ResultCode ParcelRegistry::updateParcelStatus(const std::string& id, ParcelStatu
     return ResultCode::Success;
 }
 
+ResultCode ParcelRegistry::updateParcelDetails(const std::string& id,
+                                               const std::string& newName,
+                                               const std::string& newRecipientID,
+                                               const std::string& newAddress) {
+    if (isBlank(id)) {
+        return ResultCode::InvalidInput;
+    }
+
+    Parcel* p = findParcel(id);
+    if (p == nullptr) {
+        return ResultCode::NotFound;
+    }
+
+    if (isFinalStatus(p->status)) {
+        return ResultCode::AlreadyCompleted;
+    }
+
+    if (isBlank(newName) && isBlank(newRecipientID) && isBlank(newAddress)) {
+        return ResultCode::InvalidInput;      // nothing to change
+    }
+
+    if (!isBlank(newName))        p->recipientName = newName;
+    if (!isBlank(newRecipientID)) p->recipientID = newRecipientID;
+    if (!isBlank(newAddress))     p->deliveryAddress = newAddress;
+
+    return ResultCode::Success;
+}
+
+ResultCode ParcelRegistry::removeParcel(const std::string& id) {
+    if (isBlank(id)) {
+        return ResultCode::InvalidInput;
+    }
+
+    Parcel* p = findParcel(id);
+    if (p == nullptr) {
+        return ResultCode::NotFound;
+    }
+    if (!p->requestID.empty() || !p->resourceID.empty()) {
+        return ResultCode::InvalidStatus;     
+    }
+
+    // Remove from the linked list
+    if (head == p) {
+        head = p->next;
+        if (tail == p) {
+            tail = nullptr;  // it was the only parcel
+        }
+    } else {
+        Parcel* current = head;
+        while (current != nullptr && current->next != p) {
+            current = current->next;
+        }
+        if (current != nullptr) {
+            current->next = p->next;
+            if (tail == p) {
+                tail = current;  // update tail if needed
+            }
+        }
+    }
+
+    // Remove from any queue it might be in
+    ParcelQueue* queue = queueFor(p->status);
+    if (queue != nullptr) {
+        queue->remove(p);
+    }
+
+    delete p;
+    size--;
+
+    return ResultCode::Success;
+}
+
 Parcel* ParcelRegistry::peekWaiting() const {
     return waiting.peek();
 }

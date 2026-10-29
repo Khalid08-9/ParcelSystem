@@ -35,6 +35,11 @@ public:
     ResultCode routeNextParcel(RouteAction action);
     ResultCode viewParcel(const std::string& parcelID) const;
     ResultCode updateParcelStatus(const std::string& id, ParcelStatus newStatus);
+    ResultCode updateParcelDetails(const std::string& id,
+                               const std::string& newName,
+                               const std::string& newRecipientID,
+                               const std::string& newAddress);
+    ResultCode removeParcel(const std::string& id);
     Parcel* peekWaiting() const;
     int waitingCount() const;
     int collectionCount() const;

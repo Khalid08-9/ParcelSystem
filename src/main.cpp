@@ -8,7 +8,7 @@
 //
 // Needs these public members in ParcelRegistry:
 //   registerParcel(parcel, assignedID), findParcel, viewParcel, displayAllParcels,
-//   routeNextParcel, updateParcelStatus,
+//   routeNextParcel, updateParcelStatus, updateParcelDetails, removeParcel,
 //   getSize, peekWaiting, waitingCount, collectionCount, deliveryCount,
 //   specialCount, returnCount, holdCount
 
@@ -289,6 +289,61 @@ void updateStatusMenu(ParcelRegistry& registry) {
     }
 }
 
+// Edits recipient name, recipient ID and address; Enter keeps the old value
+void editDetailsMenu(ParcelRegistry& registry) {
+    printTitle("EDIT PARCEL DETAILS");
+
+    std::string id = readLine("Parcel ID: ");
+    ResultCode found = registry.viewParcel(id);   // shows the current details
+    if (found != ResultCode::Success) {
+        std::cout << describe(found) << "\n";
+        return;
+    }
+
+    std::cout << "\nPress Enter to keep the current value.\n";
+    std::string name    = readLine("New recipient name: ");
+    std::string recID   = readLine("New recipient ID: ");
+    std::string address = readLine("New delivery address: ");
+
+    ResultCode result = registry.updateParcelDetails(id, name, recID, address);
+    if (result == ResultCode::Success) {
+        std::cout << "Details updated.\n";
+        registry.viewParcel(id);
+    } else if (result == ResultCode::InvalidInput) {
+        std::cout << "Nothing to update: no new value was entered.\n";
+    } else {
+        std::cout << describe(result) << "\n";
+    }
+}
+
+// Permanently removes a parcel after showing it and asking for confirmation
+void removeParcelMenu(ParcelRegistry& registry) {
+    printTitle("REMOVE A PARCEL");
+
+    std::string id = readLine("Parcel ID: ");
+    ResultCode found = registry.viewParcel(id);
+    if (found != ResultCode::Success) {
+        std::cout << describe(found) << "\n";
+        return;
+    }
+
+    std::cout << "\nTip: to keep a record, update the status to Cancelled instead.\n";
+    if (!confirm("Remove this parcel permanently?")) {
+        std::cout << "Cancelled. The parcel was not removed.\n";
+        return;
+    }
+
+    ResultCode result = registry.removeParcel(id);
+    if (result == ResultCode::Success) {
+        std::cout << "Parcel " << id << " was removed.\n";
+    } else if (result == ResultCode::InvalidStatus) {
+        std::cout << "Error: this parcel is linked to a service request or resource "
+                     "and cannot be removed. Cancel it instead.\n";
+    } else {
+        std::cout << describe(result) << "\n";
+    }
+}
+
 // ======================= Main menu =======================
 
 void printMenu() {
@@ -302,6 +357,8 @@ void printMenu() {
               << "  5. Process all waiting parcels\n"
               << "UPDATES\n"
               << "  6. Update a parcel's status\n"
+              << "  7. Edit parcel details\n"
+              << "  8. Remove a parcel\n"
               << "  0. Exit\n";
 }
 
@@ -315,13 +372,15 @@ int main() {
         showDashboard(registry);
         printMenu();
 
-        switch (readInt("Enter your choice (0-6): ", 0, 6)) {
+        switch (readInt("Enter your choice (0-8): ", 0, 8)) {
             case 1: registerParcelMenu(registry);   pressEnter(); break;
             case 2: registry.displayAllParcels();   pressEnter(); break;
             case 3: viewParcelMenu(registry);       pressEnter(); break;
             case 4: processNextMenu(registry);      pressEnter(); break;
             case 5: processAllMenu(registry);       pressEnter(); break;
             case 6: updateStatusMenu(registry);     pressEnter(); break;
+            case 7: editDetailsMenu(registry);      pressEnter(); break;
+            case 8: removeParcelMenu(registry);     pressEnter(); break;
             case 0:
                 std::cout << "Goodbye.\n";
                 running = false;
