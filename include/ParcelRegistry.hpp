@@ -40,6 +40,8 @@ public:
                                const std::string& newRecipientID,
                                const std::string& newAddress);
     ResultCode removeParcel(const std::string& id);
+    ResultCode searchByStatus(ParcelStatus status) const;
+    ResultCode searchByRecipientID(const std::string& recipientID) const;
     Parcel* peekWaiting() const;
     int waitingCount() const;
     int collectionCount() const;

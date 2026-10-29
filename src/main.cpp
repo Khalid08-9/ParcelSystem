@@ -1,17 +1,6 @@
-// src/main.cpp
-// Console menu for the Smart Campus Parcel System (Task 1 + integration shell).
-//
-// Rules for this file:
-//  - It only reads input, prints messages and calls the registry.
-//  - It never touches head, tail or the queues directly.
-//  - Every ResultCode is turned into a message in ONE place (describe).
-//
-// Needs these public members in ParcelRegistry:
-//   registerParcel(parcel, assignedID), findParcel, viewParcel, displayAllParcels,
-//   routeNextParcel, updateParcelStatus, updateParcelDetails, removeParcel,
-//   getSize, peekWaiting, waitingCount, collectionCount, deliveryCount,
-//   specialCount, returnCount, holdCount
 
+
+#include <cstdlib>
 #include <iostream>
 #include <iomanip>
 #include <limits>
@@ -20,13 +9,35 @@
 
 namespace {
 
+// All statuses in one list, so every menu uses the same order
+const ParcelStatus kAllStatuses[] = {
+    ParcelStatus::Registered,     ParcelStatus::ReadyForCollection,
+    ParcelStatus::OutForDelivery, ParcelStatus::SpecialHandling,
+    ParcelStatus::ReturnToSender, ParcelStatus::OnHold,
+    ParcelStatus::Missing,        ParcelStatus::Collected,
+    ParcelStatus::Delivered,      ParcelStatus::Returned,
+    ParcelStatus::Cancelled
+};
+const int kStatusCount = 11;
+
 // ======================= Input helpers =======================
+
+// If the input stream has ended (Ctrl+D, or a piped file ran out), stop cleanly
+// instead of looping forever.
+void exitIfInputEnded() {
+    if (std::cin.eof()) {
+        std::cout << "\nInput ended. Exiting.\n";
+        std::exit(0);
+    }
+}
 
 // Prints a prompt and reads a whole line (names and addresses contain spaces)
 std::string readLine(const std::string& prompt) {
     std::string text;
     std::cout << prompt;
-    std::getline(std::cin, text);
+    if (!std::getline(std::cin, text)) {
+        exitIfInputEnded();
+    }
     return text;
 }
 
@@ -43,6 +54,7 @@ int readInt(const std::string& prompt, int minValue, int maxValue) {
             std::cout << "Please enter a number from " << minValue
                       << " to " << maxValue << ".\n";
         } else {
+            exitIfInputEnded();
             std::cin.clear();   // not a number: reset the stream, drop the line
             std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
             std::cout << "Invalid input. Please enter a number.\n";
@@ -59,7 +71,9 @@ bool confirm(const std::string& question) {
 void pressEnter() {
     std::cout << "\nPress Enter to continue...";
     std::string ignored;
-    std::getline(std::cin, ignored);
+    if (!std::getline(std::cin, ignored)) {
+        exitIfInputEnded();
+    }
 }
 
 // ======================= Output helpers =======================
@@ -117,7 +131,6 @@ ParcelType readParcelType() {
 
 void registerParcelMenu(ParcelRegistry& registry) {
     printTitle("REGISTER A NEW PARCEL");
-
     std::cout << "The Parcel ID is created automatically.\n";
 
     Parcel p;
@@ -136,7 +149,7 @@ void registerParcelMenu(ParcelRegistry& registry) {
     }
 }
 
-// ======================= Records =======================
+// ======================= Records and searches =======================
 
 void viewParcelMenu(const ParcelRegistry& registry) {
     printTitle("VIEW A PARCEL");
@@ -144,6 +157,53 @@ void viewParcelMenu(const ParcelRegistry& registry) {
     std::string id = readLine("Parcel ID: ");
     ResultCode result = registry.viewParcel(id);
     if (result != ResultCode::Success) {
+        std::cout << describe(result) << "\n";
+    }
+}
+
+// Lists every status; returns false if the user cancels
+bool readAnyStatus(ParcelStatus& chosen) {
+    std::cout << "\nChoose a status:\n";
+    for (int i = 0; i < kStatusCount; ++i) {
+        std::cout << "  " << std::setw(2) << (i + 1) << ". "
+                  << statusToString(kAllStatuses[i]) << "\n";
+    }
+    std::cout << "   0. Cancel\n";
+
+    int choice = readInt("Choice (0-11): ", 0, kStatusCount);
+    if (choice == 0) {
+        return false;
+    }
+    chosen = kAllStatuses[choice - 1];
+    return true;
+}
+
+void searchByStatusMenu(const ParcelRegistry& registry) {
+    printTitle("SEARCH BY STATUS");
+
+    ParcelStatus status = ParcelStatus::Registered;
+    if (!readAnyStatus(status)) {
+        std::cout << "Cancelled.\n";
+        return;
+    }
+
+    ResultCode result = registry.searchByStatus(status);
+    if (result == ResultCode::NotFound) {
+        std::cout << "No parcels have the status "
+                  << statusToString(status) << ".\n";
+    } else if (result != ResultCode::Success) {
+        std::cout << describe(result) << "\n";
+    }
+}
+
+void searchByRecipientMenu(const ParcelRegistry& registry) {
+    printTitle("SEARCH BY RECIPIENT ID");
+
+    std::string recipientID = readLine("Recipient ID: ");
+    ResultCode result = registry.searchByRecipientID(recipientID);
+    if (result == ResultCode::NotFound) {
+        std::cout << "No parcels match this recipient ID.\n";
+    } else if (result != ResultCode::Success) {
         std::cout << describe(result) << "\n";
     }
 }
@@ -220,27 +280,17 @@ void processAllMenu(ParcelRegistry& registry) {
     std::cout << routed << " parcel(s) routed.\n";
 }
 
-// ======================= Update =======================
+// ======================= Update and remove =======================
 
 // Lists ONLY the statuses this parcel may move to (checked with canTransition),
 // and returns the one chosen; returns false if there is nothing to choose or
 // the user cancels.
-bool readStatus(ParcelStatus current, ParcelStatus& chosen) {
-    const ParcelStatus all[] = {
-        ParcelStatus::Registered,     ParcelStatus::ReadyForCollection,
-        ParcelStatus::OutForDelivery, ParcelStatus::SpecialHandling,
-        ParcelStatus::ReturnToSender, ParcelStatus::OnHold,
-        ParcelStatus::Missing,        ParcelStatus::Collected,
-        ParcelStatus::Delivered,      ParcelStatus::Returned,
-        ParcelStatus::Cancelled
-    };
-    const int total = 11;
-
-    ParcelStatus allowed[11];
+bool readAllowedStatus(ParcelStatus current, ParcelStatus& chosen) {
+    ParcelStatus allowed[kStatusCount];
     int count = 0;
-    for (int i = 0; i < total; ++i) {
-        if (canTransition(current, all[i])) {
-            allowed[count++] = all[i];
+    for (int i = 0; i < kStatusCount; ++i) {
+        if (canTransition(current, kAllStatuses[i])) {
+            allowed[count++] = kAllStatuses[i];
         }
     }
 
@@ -275,7 +325,7 @@ void updateStatusMenu(ParcelRegistry& registry) {
 
     ParcelStatus current = registry.findParcel(id)->status;
     ParcelStatus newStatus = current;
-    if (!readStatus(current, newStatus)) {
+    if (!readAllowedStatus(current, newStatus)) {
         std::cout << "Nothing was changed.\n";
         return;
     }
@@ -348,18 +398,20 @@ void removeParcelMenu(ParcelRegistry& registry) {
 
 void printMenu() {
     std::cout << "REGISTRATION\n"
-              << "  1. Register a parcel\n"
+              << "   1. Register a parcel\n"
               << "RECORDS\n"
-              << "  2. Display all parcels\n"
-              << "  3. View a parcel by ID\n"
+              << "   2. Display all parcels\n"
+              << "   3. View a parcel by ID\n"
+              << "   4. Search by status\n"
+              << "   5. Search by recipient ID\n"
               << "PROCESSING\n"
-              << "  4. Process next parcel\n"
-              << "  5. Process all waiting parcels\n"
+              << "   6. Process next parcel\n"
+              << "   7. Process all waiting parcels\n"
               << "UPDATES\n"
-              << "  6. Update a parcel's status\n"
-              << "  7. Edit parcel details\n"
-              << "  8. Remove a parcel\n"
-              << "  0. Exit\n";
+              << "   8. Update a parcel's status\n"
+              << "   9. Edit parcel details\n"
+              << "  10. Remove a parcel\n"
+              << "   0. Exit\n";
 }
 
 }  // namespace
@@ -372,15 +424,17 @@ int main() {
         showDashboard(registry);
         printMenu();
 
-        switch (readInt("Enter your choice (0-8): ", 0, 8)) {
-            case 1: registerParcelMenu(registry);   pressEnter(); break;
-            case 2: registry.displayAllParcels();   pressEnter(); break;
-            case 3: viewParcelMenu(registry);       pressEnter(); break;
-            case 4: processNextMenu(registry);      pressEnter(); break;
-            case 5: processAllMenu(registry);       pressEnter(); break;
-            case 6: updateStatusMenu(registry);     pressEnter(); break;
-            case 7: editDetailsMenu(registry);      pressEnter(); break;
-            case 8: removeParcelMenu(registry);     pressEnter(); break;
+        switch (readInt("Enter your choice (0-10): ", 0, 10)) {
+            case 1:  registerParcelMenu(registry);      pressEnter(); break;
+            case 2:  registry.displayAllParcels();      pressEnter(); break;
+            case 3:  viewParcelMenu(registry);          pressEnter(); break;
+            case 4:  searchByStatusMenu(registry);      pressEnter(); break;
+            case 5:  searchByRecipientMenu(registry);   pressEnter(); break;
+            case 6:  processNextMenu(registry);         pressEnter(); break;
+            case 7:  processAllMenu(registry);          pressEnter(); break;
+            case 8:  updateStatusMenu(registry);        pressEnter(); break;
+            case 9:  editDetailsMenu(registry);         pressEnter(); break;
+            case 10: removeParcelMenu(registry);        pressEnter(); break;
             case 0:
                 std::cout << "Goodbye.\n";
                 running = false;

@@ -122,6 +122,31 @@ static std::string formatTime(std::time_t t) {
     std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M", local);
     return std::string(buffer);
 }
+static void printTableHeader() {
+    std::cout << std::left
+              << std::setw(12) << "Parcel ID"
+              << std::setw(20) << "Recipient Name"
+              << std::setw(12) << "Recipient ID"
+              << std::setw(22) << "Status"
+              << "Arrival Time\n"
+              << std::string(80, '-') << "\n";
+}
+
+static void printParcelRow(const Parcel& p) {
+    std::cout << std::left
+              << std::setw(12) << p.parcelID
+              << std::setw(20) << p.recipientName
+              << std::setw(12) << p.recipientID
+              << std::setw(22) << statusToString(p.status)
+              << formatTime(p.arrivalTime) << "\n";
+}
+
+static std::string toLower(std::string text) {
+    for (char& c : text) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return text;
+}
 
 void ParcelRegistry::displayAllParcels() const {
     if (head == nullptr) {
@@ -388,6 +413,54 @@ ResultCode ParcelRegistry::removeParcel(const std::string& id) {
 
     return ResultCode::Success;
 }
+
+ResultCode ParcelRegistry::searchByStatus(ParcelStatus status) const {
+    int matches = 0;
+    for (Parcel* current = head; current != nullptr; current = current->next) {
+        if (current->status != status) continue;
+
+        if (matches == 0) {
+            std::cout << "\nPARCELS WITH STATUS: " << statusToString(status) << "\n";
+            printTableHeader();
+        }
+        printParcelRow(*current);
+        ++matches;
+    }
+
+    if (matches == 0) {
+        return ResultCode::NotFound;
+    }
+    std::cout << std::string(80, '-') << "\nMatches: " << matches << "\n";
+    return ResultCode::Success;
+}
+
+ResultCode ParcelRegistry::searchByRecipientID(const std::string& recipientID) const {
+    if (isBlank(recipientID)) {
+        return ResultCode::InvalidInput;
+    }
+
+    const std::string wanted = toLower(recipientID);
+    int matches = 0;
+    for (Parcel* current = head; current != nullptr; current = current->next) {
+        if (toLower(current->recipientID) != wanted) continue;
+
+        if (matches == 0) {
+            std::cout << "\nPARCELS FOR RECIPIENT ID: " << recipientID << "\n";
+            printTableHeader();
+        }
+        printParcelRow(*current);
+        ++matches;
+    }
+
+    if (matches == 0) {
+        return ResultCode::NotFound;
+    }
+    std::cout << std::string(80, '-') << "\nMatches: " << matches << "\n";
+    return ResultCode::Success;
+}
+
+
+
 
 Parcel* ParcelRegistry::peekWaiting() const {
     return waiting.peek();
