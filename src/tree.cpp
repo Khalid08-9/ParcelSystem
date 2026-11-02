@@ -31,9 +31,8 @@ void inorderTraversal(treeNode *root) {
 }
 
 Parcel *treeSearch(treeNode *root, const std::string &key) {
-    if (root == nullptr || root->parcel.parcelID == key) {
-        return &root->parcel;
-    }
+    if (root == nullptr) return nullptr;
+    if (root->parcel.parcelID == key) return &root->parcel;
     if (key < root->parcel.parcelID) {
         return treeSearch(root->left, key);
     } else {
@@ -80,4 +79,24 @@ treeNode *treeRemove(treeNode *root, const std::string &key) {
         root->right = treeRemove(root->right, temp->parcel.parcelID);
     }
     return root;
+}
+
+void treeUpdate(treeNode *root, treeNode *key, const Parcel &p) {
+    if (key == nullptr) {
+        std::cout << "Can't find the parcel";
+        return;
+    }
+    Parcel *temp = treeSearch(root, key->parcel.parcelID);
+
+    if (temp == nullptr) {
+        std::cout << "Can't find the parcel";
+        return;
+    }
+    if (p.parcelID != temp->parcelID) {
+        std::cout << "Can't change the parcel ID";
+        return;
+    }
+
+    *temp = p;
+    std::cout << "Parcel updated";
 }

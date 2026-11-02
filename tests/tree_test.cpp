@@ -6,9 +6,6 @@
 #include "ParcelRegistry.hpp"
 #include "ParcelTree.hpp"
 
-// treeRemove is implemented in tree.cpp but is not yet declared in ParcelTree.hpp.
-treeNode* treeRemove(treeNode* root, const std::string& key);
-
 // tree_tests only links tree.cpp. Include these implementations here so this
 // test can exercise the registry without changing CMakeLists.txt or main.cpp.
 #include "../src/ParcelQueue.cpp"
@@ -145,6 +142,45 @@ bool testTreeRemove() {
     return passed;
 }
 
+bool testTreeUpdate() {
+    treeNode* root = makeTree({"PCL0003", "PCL0001", "PCL0005"});
+    treeNode* key = root->left;
+    Parcel replacement = makeParcel();
+    replacement.parcelID = "PCL0001";
+    replacement.recipientName = "Updated Recipient";
+    replacement.deliveryAddress = "New Address";
+
+    treeUpdate(root, key, replacement);
+    Parcel* found = treeSearch(root, "PCL0001");
+    bool passed = check(found != nullptr && found->recipientName == "Updated Recipient" &&
+                            found->deliveryAddress == "New Address",
+                        "updating an existing parcel replaces its details");
+    passed = check(treeIDs(root) == "PCL0001 PCL0003 PCL0005 ",
+                   "updating details preserves tree ordering") && passed;
+
+    treeNode missing{makeParcel(), nullptr, nullptr};
+    missing.parcel.parcelID = "PCL0002";
+    treeUpdate(root, &missing, replacement);
+    passed = check(treeIDs(root) == "PCL0001 PCL0003 PCL0005 " &&
+                       treeSearch(root, "PCL0003")->recipientName == "Test Recipient",
+                   "updating a missing parcel leaves the tree unchanged") && passed;
+
+    replacement.parcelID = "PCL0009";
+    treeUpdate(root, key, replacement);
+    passed = check(treeSearch(root, "PCL0001") == found &&
+                       treeSearch(root, "PCL0009") == nullptr &&
+                       treeIDs(root) == "PCL0001 PCL0003 PCL0005 ",
+                   "updating a parcel cannot change its tree key") && passed;
+
+    treeUpdate(root, nullptr, replacement);
+    treeUpdate(nullptr, key, replacement);
+    passed = check(treeIDs(root) == "PCL0001 PCL0003 PCL0005 ",
+                   "null key or empty tree leaves parcels unchanged") && passed;
+
+    destroyTree(root);
+    return passed;
+}
+
 } // namespace
 
 int main() {
@@ -211,6 +247,7 @@ int main() {
 
     destroyTree(root);
     passed = testTreeRemove() && passed;
+    passed = testTreeUpdate() && passed;
     if (passed) std::cout << "Tree tests passed.\n";
     return passed ? 0 : 1;
 }
