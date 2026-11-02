@@ -3,18 +3,14 @@
 
 #include <string>
 #include "Parcel.hpp"
+#include "Result.hpp"
 
-struct treeNode {
-    Parcel parcel;
-    treeNode* left;
-    treeNode* right;
-};
+struct treeNode;
 
-treeNode* treeCreate(const Parcel& p);
-treeNode* treeInsert(treeNode* root, const Parcel& p);
-Parcel* treeSearch(treeNode* root, const std::string& key);
-treeNode* treeRemove(treeNode* root, const std::string& key);
-void treeUpdate(treeNode* root, treeNode* key, const Parcel& p);
-void inorderTraversal(treeNode* root);
-
+ResultCode insertParcelRecord(treeNode*& root, const Parcel& parcel);
+ResultCode findParcelRecord(const treeNode* root, const std::string& id, const Parcel*& found);
+ResultCode displayParcelRecords(const treeNode* root);
+ResultCode removeParcelRecord(treeNode*& root, const std::string& id);
+ResultCode updateParcelRecord(treeNode* root, const std::string& id, const Parcel& replacement);
+void clearParcelRecords(treeNode*& root);
 #endif

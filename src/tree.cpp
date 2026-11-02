@@ -1,102 +1,139 @@
 #include <iostream>
 
 #include "ParcelTree.hpp"
-#include "Result.hpp"
 
-treeNode *treeCreate(const Parcel &p) {
-    treeNode *newNode = new treeNode();
-    newNode->parcel = Parcel(p);
-    newNode->left = newNode->right = nullptr;
-    return newNode;
-}
+struct treeNode {
+    Parcel parcel;
+    treeNode *left;
+    treeNode *right;
+};
 
-treeNode *treeInsert(treeNode *root, const Parcel &p) {
-    if (root == nullptr) {
-        return treeCreate(p);
+namespace {
+    bool isBlank(const std::string &text) {
+        return text.find_first_not_of(" \t\r\n") == std::string::npos;
     }
-    if (p.parcelID < root->parcel.parcelID) {
-        root->left = treeInsert(root->left, p);
-    } else {
-        root->right = treeInsert(root->right, p);
-    }
-    return root;
-}
 
-void inorderTraversal(treeNode *root) {
-    if (root != nullptr) {
+    bool hasRequiredDetails(const Parcel &parcel) {
+        return !isBlank(parcel.parcelID) && !isBlank(parcel.recipientName) &&
+               !isBlank(parcel.recipientID) && !isBlank(parcel.deliveryAddress);
+    }
+
+    treeNode *treeCreate(const Parcel &parcel) {
+        treeNode *node = new treeNode{parcel, nullptr, nullptr};
+        node->parcel.next = nullptr; // A tree record is not part of the registry's linked list.
+        return node;
+    }
+
+    treeNode *treeInsert(treeNode *root, const Parcel &parcel) {
+        if (root == nullptr) return treeCreate(parcel);
+        if (parcel.parcelID < root->parcel.parcelID) {
+            root->left = treeInsert(root->left, parcel);
+        } else {
+            root->right = treeInsert(root->right, parcel);
+        }
+        return root;
+    }
+
+    const treeNode *findNode(const treeNode *root, const std::string &id) {
+        if (root == nullptr || root->parcel.parcelID == id) return root;
+        return id < root->parcel.parcelID
+                   ? findNode(root->left, id)
+                   : findNode(root->right, id);
+    }
+
+    treeNode *findNode(treeNode *root, const std::string &id) {
+        if (root == nullptr || root->parcel.parcelID == id) return root;
+        return id < root->parcel.parcelID
+                   ? findNode(root->left, id)
+                   : findNode(root->right, id);
+    }
+
+    void inorderTraversal(const treeNode *root) {
+        if (root == nullptr) return;
         inorderTraversal(root->left);
         std::cout << root->parcel.parcelID << " ";
         inorderTraversal(root->right);
     }
-}
 
-Parcel *treeSearch(treeNode *root, const std::string &key) {
-    if (root == nullptr) return nullptr;
-    if (root->parcel.parcelID == key) return &root->parcel;
-    if (key < root->parcel.parcelID) {
-        return treeSearch(root->left, key);
-    } else {
-        return treeSearch(root->right, key);
+    treeNode *minValueNode(treeNode *node) {
+        while (node->left != nullptr) node = node->left;
+        return node;
     }
-}
 
-treeNode *minValueNode(treeNode *node) {
-    treeNode *current = node;
-    // loop down to find the leftmost leaf
-    while (current && current->left != nullptr) {
-        current = current->left;
-    }
-    return current;
-}
+    treeNode *treeRemove(treeNode *root, const std::string &id) {
+        if (root == nullptr) return nullptr;
+        if (id < root->parcel.parcelID) {
+            root->left = treeRemove(root->left, id);
+        } else if (id > root->parcel.parcelID) {
+            root->right = treeRemove(root->right, id);
+        } else {
+            if (root->left == nullptr) {
+                treeNode *right = root->right;
+                delete root;
+                return right;
+            }
+            if (root->right == nullptr) {
+                treeNode *left = root->left;
+                delete root;
+                return left;
+            }
 
-treeNode *treeRemove(treeNode *root, const std::string &key) {
-    if (root == nullptr) return root;
-
-    if (key < root->parcel.parcelID) {
-        root->left = treeRemove(root->left, key);
-    } else if (key > root->parcel.parcelID) {
-        root->right = treeRemove(root->right, key);
-    } else {
-        // node with only one child or no child
-        if (root->left == nullptr) {
-            treeNode *temp = root->right;
-            delete root;
-            return temp;
-        } else if (root->right == nullptr) {
-            treeNode *temp = root->left;
-            delete root;
-            return temp;
+            treeNode *successor = minValueNode(root->right);
+            root->parcel = successor->parcel;
+            root->right = treeRemove(root->right, successor->parcel.parcelID);
         }
-
-        // node with two children: Get the inorder successor
-        // (smallest in the right subtree)
-        treeNode *temp = minValueNode(root->right);
-
-        // Copy the inorder successor's content to this node
-        root->parcel = temp->parcel;
-
-        // Delete the inorder successor
-        root->right = treeRemove(root->right, temp->parcel.parcelID);
+        return root;
     }
-    return root;
+
+    void clearTree(treeNode *root) {
+        if (root == nullptr) return;
+        clearTree(root->left);
+        clearTree(root->right);
+        delete root;
+    }
 }
 
-void treeUpdate(treeNode *root, treeNode *key, const Parcel &p) {
-    if (key == nullptr) {
-        std::cout << "Can't find the parcel";
-        return;
-    }
-    Parcel *temp = treeSearch(root, key->parcel.parcelID);
+ResultCode insertParcelRecord(treeNode *&root, const Parcel &parcel) {
+    if (!hasRequiredDetails(parcel)) return ResultCode::InvalidInput;
+    if (findNode(root, parcel.parcelID) != nullptr) return ResultCode::Duplicate;
+    root = treeInsert(root, parcel);
+    return ResultCode::Success;
+}
 
-    if (temp == nullptr) {
-        std::cout << "Can't find the parcel";
-        return;
-    }
-    if (p.parcelID != temp->parcelID) {
-        std::cout << "Can't change the parcel ID";
-        return;
-    }
+ResultCode findParcelRecord(const treeNode *root, const std::string &id, const Parcel *&found) {
+    found = nullptr;
+    if (isBlank(id)) return ResultCode::InvalidInput;
+    const treeNode *node = findNode(root, id);
+    if (node == nullptr) return ResultCode::NotFound;
+    found = &node->parcel;
+    return ResultCode::Success;
+}
 
-    *temp = p;
-    std::cout << "Parcel updated";
+ResultCode displayParcelRecords(const treeNode *root) {
+    if (root == nullptr) return ResultCode::Empty;
+    inorderTraversal(root);
+    return ResultCode::Success;
+}
+
+ResultCode removeParcelRecord(treeNode *&root, const std::string &id) {
+    if (isBlank(id)) return ResultCode::InvalidInput;
+    if (findNode(root, id) == nullptr) return ResultCode::NotFound;
+    root = treeRemove(root, id);
+    return ResultCode::Success;
+}
+
+ResultCode updateParcelRecord(treeNode *root, const std::string &id, const Parcel &replacement) {
+    if (isBlank(id) || replacement.parcelID != id || !hasRequiredDetails(replacement))
+        return ResultCode::InvalidInput;
+
+    treeNode *node = findNode(root, id);
+    if (node == nullptr) return ResultCode::NotFound;
+    node->parcel = replacement;
+    node->parcel.next = nullptr;
+    return ResultCode::Success;
+}
+
+void clearParcelRecords(treeNode *&root) {
+    clearTree(root);
+    root = nullptr;
 }

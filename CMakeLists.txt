@@ -9,6 +9,7 @@ add_executable(parcels
         src/ParcelQueue.cpp
         src/ParcelRegistry.cpp
         src/Status.cpp
+        src/tree.cpp
 )
 target_include_directories(parcels PRIVATE include)
 
