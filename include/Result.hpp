@@ -5,7 +5,8 @@
 
 enum  ResultCode {
     Success, NotFound, Duplicate, InvalidInput,
-    InvalidStatus, Empty, AlreadyCompleted
+    InvalidStatus, Empty, AlreadyCompleted,
+    Full // Task 3: no room for another resource
 };
 
 #endif
