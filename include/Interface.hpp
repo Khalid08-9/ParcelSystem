@@ -3,6 +3,7 @@
 
 #include <string>
 #include "Parcel.hpp"
+#include "ParcelTree.hpp"
 #include "Result.hpp"
 
 // ---- Task 1: Parcel intake ----
@@ -27,9 +28,6 @@ void       showHistory(const std::string& parcelID);
 ResultCode undoLastActivity();
 
 // ---- Task 5: Parcel tree ----
-ResultCode treeInsert(const Parcel& p);
-Parcel*    treeSearch(const std::string& key);
-ResultCode treeRemove(const std::string& key);
-void       treeDisplay();
+// The tree functions are declared in ParcelTree.hpp, included above.
 
 #endif
