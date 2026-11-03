@@ -94,7 +94,7 @@ void testAssignAndRelease() {
           "duplicate active assignment rejected");
     check(manager.assignNextAvailable(small2, "", assigned) == ResultCode::Success
               && assigned == ctr2, "round-robin picks the next counter");
-    check(manager.assignNextAvailable(small3, "", assigned) == ResultCode::NoResourceAvailable,
+    check(manager.assignNextAvailable(small3, "", assigned) == ResultCode::AllResourcesOccupied,
           "all counters occupied");
 
     check(manager.assignToResource(dlv1, small3, "") == ResultCode::WrongResourceType,
@@ -187,6 +187,11 @@ void testStatusChanges() {
     check(manager.assignNextAvailable(large2, "", assigned) == ResultCode::NoResourceAvailable,
           "no suitable resource available");
     check(manager.countByStatus(ResourceStatus::Unavailable) == 2, "status counts are correct");
+
+    // No counter registered at all
+    std::string small = addRoutedParcel(registry, ParcelType::Small);
+    check(manager.assignNextAvailable(small, "", assigned) == ResultCode::NoResourceAvailable,
+          "no resource of the right type");
 }
 
 }  // namespace

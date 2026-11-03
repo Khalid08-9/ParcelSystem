@@ -2,6 +2,7 @@
 #define RESOURCE_HPP
 #include <string>
 #include "Status.hpp"
+#include "Result.hpp"
 
 // Task 3: Collection Counter and Delivery Resource Management
 
@@ -38,5 +39,8 @@ std::string resourceStatusToString(ResourceStatus s);
 // Returns false when a parcel in this status must not get a resource
 // (not routed yet, on hold, missing or already completed).
 bool requiredResourceType(ParcelStatus status, ResourceType &required);
+
+// Message for the user after a resource operation (requirement 3.5)
+std::string resourceResultMessage(ResultCode code);
 
 #endif
