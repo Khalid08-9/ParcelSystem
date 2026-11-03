@@ -389,6 +389,27 @@ ResultCode ParcelRegistry::removeParcel(const std::string& id) {
     return ResultCode::Success;
 }
 
+ResultCode ParcelRegistry::restoreStatus(const std::string& id, ParcelStatus oldStatus) {
+    Parcel* p = findParcel(id);
+    if (p == nullptr) {
+        return ResultCode::NotFound;
+    }
+
+    ParcelQueue* currentQueue = queueFor(p->status);
+    if (currentQueue != nullptr) {
+        currentQueue->remove(p);
+    }
+
+    p->status = oldStatus;
+
+    ParcelQueue* restoredQueue = queueFor(oldStatus);
+    if (restoredQueue != nullptr) {
+        restoredQueue->enqueue(p);
+    }
+
+    return ResultCode::Success;
+}
+
 Parcel* ParcelRegistry::peekWaiting() const {
     return waiting.peek();
 }

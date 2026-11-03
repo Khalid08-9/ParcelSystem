@@ -9,6 +9,12 @@ add_executable(parcels
         src/ParcelQueue.cpp
         src/ParcelRegistry.cpp
         src/Status.cpp
+        src/Resource.cpp
+        src/ResourceQueue.cpp
+        src/ResourceManager.cpp
+        src/Activity.cpp
+        src/ActivityStack.cpp
+        src/ActivityHistory.cpp
 )
 target_include_directories(parcels PRIVATE include)
 
@@ -20,3 +26,18 @@ add_executable(tree_tests
 )
 target_include_directories(tree_tests PRIVATE include)
 add_test(NAME tree_tests COMMAND tree_tests)
+
+add_executable(activity_tests
+        tests/activity_test.cpp
+        src/Activity.cpp
+        src/ActivityStack.cpp
+        src/ActivityHistory.cpp
+        src/Resource.cpp
+        src/ResourceQueue.cpp
+        src/ResourceManager.cpp
+        src/ParcelQueue.cpp
+        src/ParcelRegistry.cpp
+        src/Status.cpp
+)
+target_include_directories(activity_tests PRIVATE include)
+add_test(NAME activity_tests COMMAND activity_tests)

@@ -17,6 +17,7 @@
 #include <limits>
 #include <string>
 #include "ParcelRegistry.hpp"
+#include "ActivityHistory.hpp"
 
 namespace {
 
@@ -115,7 +116,7 @@ ParcelType readParcelType() {
     }
 }
 
-void registerParcelMenu(ParcelRegistry& registry) {
+void registerParcelMenu(ParcelRegistry& registry, ActivityHistory& history) {
     printTitle("REGISTER A NEW PARCEL");
 
     std::cout << "The Parcel ID is created automatically.\n";
@@ -129,6 +130,7 @@ void registerParcelMenu(ParcelRegistry& registry) {
     std::string assignedID;                       // filled in by the registry
     ResultCode result = registry.registerParcel(p, assignedID);
     if (result == ResultCode::Success) {
+        history.recordRegistration(*registry.findParcel(assignedID));
         std::cout << "Parcel registered with ID " << assignedID
                   << " (status Registered, added to the waiting queue).\n";
     } else {
@@ -151,7 +153,7 @@ void viewParcelMenu(const ParcelRegistry& registry) {
 // ======================= Processing =======================
 
 // Shows the next waiting parcel, lets staff choose the route, then routes it
-void processNextMenu(ParcelRegistry& registry) {
+void processNextMenu(ParcelRegistry& registry, ActivityHistory& history) {
     printTitle("PROCESS NEXT PARCEL");
 
     Parcel* next = registry.peekWaiting();
@@ -182,9 +184,11 @@ void processNextMenu(ParcelRegistry& registry) {
 
     // Parcels are owned by the registry, so this pointer stays valid
     std::string id = next->parcelID;
+    ParcelStatus before = next->status;
     ResultCode result = registry.routeNextParcel(action);
 
     if (result == ResultCode::Success) {
+        history.recordStatusChange(*next, before, ActivityType::Routed);
         std::cout << "Parcel " << id << " is now: "
                   << statusToString(next->status) << "\n";
     } else {
@@ -193,7 +197,7 @@ void processNextMenu(ParcelRegistry& registry) {
 }
 
 // Routes every waiting parcel using the default rule
-void processAllMenu(ParcelRegistry& registry) {
+void processAllMenu(ParcelRegistry& registry, ActivityHistory& history) {
     printTitle("PROCESS ALL WAITING PARCELS");
 
     if (registry.waitingCount() == 0) {
@@ -210,11 +214,14 @@ void processAllMenu(ParcelRegistry& registry) {
 
     int routed = 0;
     while (registry.waitingCount() > 0) {
+        Parcel* next = registry.peekWaiting();
+        ParcelStatus before = next->status;
         ResultCode result = registry.routeNextParcel(RouteAction::Default);
         if (result != ResultCode::Success) {
             std::cout << describe(result) << " Stopping.\n";
             break;
         }
+        history.recordStatusChange(*next, before, ActivityType::Routed);
         ++routed;
     }
     std::cout << routed << " parcel(s) routed.\n";
@@ -263,7 +270,7 @@ bool readStatus(ParcelStatus current, ParcelStatus& chosen) {
     return true;
 }
 
-void updateStatusMenu(ParcelRegistry& registry) {
+void updateStatusMenu(ParcelRegistry& registry, ActivityHistory& history) {
     printTitle("UPDATE PARCEL STATUS");
 
     std::string id = readLine("Parcel ID: ");
@@ -282,6 +289,7 @@ void updateStatusMenu(ParcelRegistry& registry) {
 
     ResultCode result = registry.updateParcelStatus(id, newStatus);
     if (result == ResultCode::Success) {
+        history.recordStatusChange(*registry.findParcel(id), current);
         std::cout << "Parcel " << id << " is now: "
                   << statusToString(newStatus) << "\n";
     } else {
@@ -290,7 +298,7 @@ void updateStatusMenu(ParcelRegistry& registry) {
 }
 
 // Edits recipient name, recipient ID and address; Enter keeps the old value
-void editDetailsMenu(ParcelRegistry& registry) {
+void editDetailsMenu(ParcelRegistry& registry, ActivityHistory& history) {
     printTitle("EDIT PARCEL DETAILS");
 
     std::string id = readLine("Parcel ID: ");
@@ -305,8 +313,10 @@ void editDetailsMenu(ParcelRegistry& registry) {
     std::string recID   = readLine("New recipient ID: ");
     std::string address = readLine("New delivery address: ");
 
+    Parcel before = *registry.findParcel(id);   // old values, so the edit can be undone
     ResultCode result = registry.updateParcelDetails(id, name, recID, address);
     if (result == ResultCode::Success) {
+        history.recordDetailsEdit(*registry.findParcel(id), before);
         std::cout << "Details updated.\n";
         registry.viewParcel(id);
     } else if (result == ResultCode::InvalidInput) {
@@ -317,7 +327,7 @@ void editDetailsMenu(ParcelRegistry& registry) {
 }
 
 // Permanently removes a parcel after showing it and asking for confirmation
-void removeParcelMenu(ParcelRegistry& registry) {
+void removeParcelMenu(ParcelRegistry& registry, ActivityHistory& history) {
     printTitle("REMOVE A PARCEL");
 
     std::string id = readLine("Parcel ID: ");
@@ -333,14 +343,66 @@ void removeParcelMenu(ParcelRegistry& registry) {
         return;
     }
 
+    Parcel removed = *registry.findParcel(id);   // copy kept for the history
     ResultCode result = registry.removeParcel(id);
     if (result == ResultCode::Success) {
+        history.recordRemoval(removed);
         std::cout << "Parcel " << id << " was removed.\n";
     } else if (result == ResultCode::InvalidStatus) {
         std::cout << "Error: this parcel is linked to a service request or resource "
                      "and cannot be removed. Cancel it instead.\n";
     } else {
         std::cout << describe(result) << "\n";
+    }
+}
+
+// ======================= Activity history (Task 4) =======================
+
+void showResult(ResultCode result) {
+    if (result != ResultCode::Success) {
+        std::cout << activityResultMessage(result) << "\n";
+    }
+}
+
+void recentActivitiesMenu(ActivityHistory& history) {
+    printTitle("RECENT ACTIVITIES");
+    showResult(history.showRecent(readInt("How many to show (1-100): ", 1, 100)));
+}
+
+void parcelHistoryMenu(ActivityHistory& history) {
+    printTitle("PARCEL ACTIVITY HISTORY");
+    showResult(history.showParcelHistory(readLine("Parcel ID: ")));
+}
+
+void reviewParcelMenu(ActivityHistory& history) {
+    printTitle("REVIEW PARCEL ACTIVITIES");
+    showResult(history.reviewParcel(readLine("Parcel ID: ")));
+}
+
+// Shows recent activities, lets staff pick one, confirms, then undoes it
+void undoMenu(ActivityHistory& history) {
+    printTitle("UNDO AN ACTIVITY");
+
+    ResultCode shown = history.showRecent(10);
+    if (shown != ResultCode::Success) {
+        showResult(shown);
+        return;
+    }
+
+    std::cout << "\nEnter an activity number, or 0 for the most recent one.\n";
+    int number = readInt("Activity number: ", 0, std::numeric_limits<int>::max());
+    if (!confirm("Undo this activity?")) {
+        std::cout << "Cancelled. Nothing was changed.\n";
+        return;
+    }
+
+    int undone = number;
+    ResultCode result = (number == 0) ? history.undoLastActivity(undone)
+                                      : history.undoActivity(number);
+    if (result == ResultCode::Success) {
+        std::cout << "Activity #" << undone << " was reversed.\n";
+    } else {
+        showResult(result);
     }
 }
 
@@ -359,6 +421,11 @@ void printMenu() {
               << "  6. Update a parcel's status\n"
               << "  7. Edit parcel details\n"
               << "  8. Remove a parcel\n"
+              << "ACTIVITY HISTORY\n"
+              << "  9. Show recent activities\n"
+              << " 10. Show a parcel's history\n"
+              << " 11. Review a parcel's activities\n"
+              << " 12. Undo an activity\n"
               << "  0. Exit\n";
 }
 
@@ -366,21 +433,28 @@ void printMenu() {
 
 int main() {
     ParcelRegistry registry;
+    // Pass the ResourceManager here once Task 3 is added to the menu,
+    // so resource assignments can be undone too.
+    ActivityHistory history(registry);
     bool running = true;
 
     while (running) {
         showDashboard(registry);
         printMenu();
 
-        switch (readInt("Enter your choice (0-8): ", 0, 8)) {
-            case 1: registerParcelMenu(registry);   pressEnter(); break;
-            case 2: registry.displayAllParcels();   pressEnter(); break;
-            case 3: viewParcelMenu(registry);       pressEnter(); break;
-            case 4: processNextMenu(registry);      pressEnter(); break;
-            case 5: processAllMenu(registry);       pressEnter(); break;
-            case 6: updateStatusMenu(registry);     pressEnter(); break;
-            case 7: editDetailsMenu(registry);      pressEnter(); break;
-            case 8: removeParcelMenu(registry);     pressEnter(); break;
+        switch (readInt("Enter your choice (0-12): ", 0, 12)) {
+            case 1:  registerParcelMenu(registry, history); pressEnter(); break;
+            case 2:  registry.displayAllParcels();          pressEnter(); break;
+            case 3:  viewParcelMenu(registry);              pressEnter(); break;
+            case 4:  processNextMenu(registry, history);    pressEnter(); break;
+            case 5:  processAllMenu(registry, history);     pressEnter(); break;
+            case 6:  updateStatusMenu(registry, history);   pressEnter(); break;
+            case 7:  editDetailsMenu(registry, history);    pressEnter(); break;
+            case 8:  removeParcelMenu(registry, history);   pressEnter(); break;
+            case 9:  recentActivitiesMenu(history);         pressEnter(); break;
+            case 10: parcelHistoryMenu(history);            pressEnter(); break;
+            case 11: reviewParcelMenu(history);             pressEnter(); break;
+            case 12: undoMenu(history);                     pressEnter(); break;
             case 0:
                 std::cout << "Goodbye.\n";
                 running = false;

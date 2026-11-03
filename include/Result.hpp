@@ -8,7 +8,9 @@ enum  ResultCode {
     InvalidStatus, Empty, AlreadyCompleted,
     // Task 3: resources
     Full, AllResourcesOccupied, NoResourceAvailable, AlreadyAssigned,
-    WrongResourceType, ResourceUnavailable, NotAssigned
+    WrongResourceType, ResourceUnavailable, NotAssigned,
+    // Task 4: activity history
+    NotReversible, AlreadyReversed
 };
 
 #endif

@@ -40,6 +40,9 @@ public:
                                const std::string& newRecipientID,
                                const std::string& newAddress);
     ResultCode removeParcel(const std::string& id);
+    // Task 4 undo only: moves a parcel back to an earlier status and queue.
+    // Skips canTransition on purpose; ActivityHistory checks the undo is safe.
+    ResultCode restoreStatus(const std::string& id, ParcelStatus oldStatus);
     Parcel* peekWaiting() const;
     int waitingCount() const;
     int collectionCount() const;
