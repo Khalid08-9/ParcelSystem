@@ -18,6 +18,8 @@
 #include <string>
 #include "ParcelRegistry.hpp"
 #include "ActivityHistory.hpp"
+#include "ResourceManager.hpp"
+#include "ServiceManager.hpp"
 
 namespace {
 
@@ -84,7 +86,8 @@ std::string describe(ResultCode code) {
 }
 
 // Summary shown above the main menu
-void showDashboard(const ParcelRegistry& registry) {
+void showDashboard(const ParcelRegistry& registry, const ServiceManager& services,
+                   const ResourceManager& resources) {
     std::cout << "\n" << std::string(46, '=') << "\n"
               << "  SMART CAMPUS PARCEL SYSTEM\n"
               << std::string(46, '=') << "\n"
@@ -97,6 +100,12 @@ void showDashboard(const ParcelRegistry& registry) {
               << registry.specialCount() << " / "
               << registry.returnCount() << " / "
               << registry.holdCount() << "\n"
+              << "  Service requests  : " << services.pendingCount() << " pending, "
+              << services.countByStatus(RequestStatus::InProgress) << " in progress\n"
+              << "  Resources         : "
+              << resources.countByStatus(ResourceStatus::Available) << " available, "
+              << resources.countByStatus(ResourceStatus::Occupied) << " occupied, "
+              << resources.countByStatus(ResourceStatus::Unavailable) << " unavailable\n"
               << std::string(46, '-') << "\n";
 }
 
@@ -406,6 +415,330 @@ void undoMenu(ActivityHistory& history) {
     }
 }
 
+// ======================= Service requests (Task 2) =======================
+
+void showService(ResultCode result) {
+    std::cout << serviceResultMessage(result) << "\n";
+}
+
+ServiceType readServiceType() {
+    std::cout << "Service type:\n"
+              << "  1. Collection        (parcel must be Ready for Collection)\n"
+              << "  2. Campus Delivery   (parcel must be Out for Delivery)\n"
+              << "  3. Special Handling  (parcel must be in Special Handling)\n"
+              << "  4. Re-delivery       (after a failed delivery attempt)\n"
+              << "  5. Return to Sender  (parcel must be Return to Sender)\n";
+    switch (readInt("Choose (1-5): ", 1, 5)) {
+        case 1:  return ServiceType::Collection;
+        case 2:  return ServiceType::CampusDelivery;
+        case 3:  return ServiceType::SpecialHandling;
+        case 4:  return ServiceType::ReDelivery;
+        default: return ServiceType::ReturnToSender;
+    }
+}
+
+void createRequestMenu(ServiceManager& services, const ParcelRegistry& registry) {
+    printTitle("CREATE A SERVICE REQUEST");
+
+    std::string parcelID = readLine("Parcel ID: ");
+    if (registry.viewParcel(parcelID) != ResultCode::Success) {
+        showService(ResultCode::NotFound);
+        return;
+    }
+    std::cout << "\n";
+    std::string recipientID = readLine("Recipient ID (to confirm the recipient): ");
+    ServiceType type = readServiceType();
+    Urgency urgency = confirm("Is this request urgent?") ? Urgency::Urgent : Urgency::Normal;
+    std::string notes = readLine("Notes / recipient requirements (optional): ");
+
+    std::string requestID;
+    ResultCode result = services.createRequest(parcelID, recipientID, type, urgency,
+                                               notes, requestID);
+    if (result == ResultCode::Success) {
+        std::cout << "Request " << requestID << " created (status Pending).\n";
+    } else {
+        showService(result);
+    }
+}
+
+void viewRequestMenu(const ServiceManager& services) {
+    printTitle("VIEW A SERVICE REQUEST");
+    ResultCode result = services.viewRequest(readLine("Request ID: "));
+    if (result != ResultCode::Success) {
+        showService(result);
+    }
+}
+
+void startNextRequestMenu(ServiceManager& services) {
+    printTitle("START NEXT REQUEST (HIGHEST PRIORITY)");
+
+    ServiceRequest* next = services.peekNext();
+    if (next == nullptr) {
+        showService(ResultCode::Empty);
+        return;
+    }
+    std::cout << "Next request by priority:";
+    services.viewRequest(next->requestID);
+    if (!confirm("\nStart this request now?")) {
+        std::cout << "Cancelled. The request stays at the front.\n";
+        return;
+    }
+    std::string startedID, resourceID;
+    ResultCode result = services.startNextRequest(startedID, resourceID);
+    if (result == ResultCode::Success) {
+        std::cout << "Request " << startedID << " is In Progress, handled by "
+                  << resourceID << ".\n";
+    } else {
+        showService(result);
+    }
+}
+
+void startSelectedRequestMenu(ServiceManager& services) {
+    printTitle("START A SELECTED REQUEST");
+    std::cout << "Use this to serve a request out of priority order, or to resume an\n"
+                 "in-progress request that lost its resource.\n";
+
+    std::string requestID = readLine("Request ID: ");
+    std::string resourceID;
+    ResultCode result = services.startRequest(requestID, resourceID);
+    if (result == ResultCode::Success) {
+        std::cout << "Request " << requestID << " is In Progress, handled by "
+                  << resourceID << ".\n";
+    } else {
+        showService(result);
+    }
+}
+
+void completeRequestMenu(ServiceManager& services) {
+    printTitle("COMPLETE A SERVICE REQUEST");
+
+    std::string requestID = readLine("Request ID: ");
+    ResultCode found = services.viewRequest(requestID);
+    if (found != ResultCode::Success) {
+        showService(found);
+        return;
+    }
+    ServiceRequest* r = services.findRequest(requestID);
+    bool delivery = r->type == ServiceType::CampusDelivery || r->type == ServiceType::ReDelivery;
+
+    std::cout << "\nOutcome:\n"
+              << "  1. Service completed\n"
+              << "  2. Delivery attempt failed (recipient not reached)\n"
+              << "  3. Return parcel to sender (refused / wrong details)\n"
+              << "  0. Cancel\n";
+    int choice = readInt("Choice (0-3): ", 0, 3);
+    if (choice == 0) {
+        std::cout << "Nothing was changed.\n";
+        return;
+    }
+
+    RequestOutcome outcome = RequestOutcome::Completed;
+    if (choice == 2) outcome = RequestOutcome::FailedAttempt;
+    else if (choice == 3) outcome = RequestOutcome::ReturnParcel;
+
+    std::string receiverID;
+    ParcelStatus afterSpecial = ParcelStatus::ReadyForCollection;
+    if (outcome == RequestOutcome::Completed) {
+        if (r->type == ServiceType::Collection || delivery) {
+            receiverID = readLine("Recipient ID shown by the person receiving it: ");
+        } else if (r->type == ServiceType::SpecialHandling) {
+            std::cout << "Where should the parcel go next?\n"
+                      << "  1. Ready for Collection\n"
+                      << "  2. Out for Delivery\n";
+            afterSpecial = readInt("Choose (1-2): ", 1, 2) == 1 ? ParcelStatus::ReadyForCollection
+                                                                : ParcelStatus::OutForDelivery;
+        }
+    }
+
+    std::string followUpID;
+    ResultCode result = services.completeRequest(requestID, outcome, receiverID,
+                                                 afterSpecial, followUpID);
+    if (result == ResultCode::Success) {
+        std::cout << "Request " << requestID << " closed: "
+                  << requestStatusToString(r->status) << ". " << r->outcomeNote << ".\n";
+        if (!followUpID.empty()) {
+            ServiceRequest* follow = services.findRequest(followUpID);
+            std::cout << "Follow-up request " << followUpID << " ("
+                      << serviceTypeToString(follow->type) << ") was created automatically.\n";
+        }
+    } else {
+        showService(result);
+    }
+}
+
+void cancelRequestMenu(ServiceManager& services) {
+    printTitle("CANCEL A SERVICE REQUEST");
+
+    std::string requestID = readLine("Request ID: ");
+    ResultCode found = services.viewRequest(requestID);
+    if (found != ResultCode::Success) {
+        showService(found);
+        return;
+    }
+    std::string reason = readLine("\nReason (optional): ");
+    if (!confirm("Cancel this request?")) {
+        std::cout << "Nothing was changed.\n";
+        return;
+    }
+    ResultCode result = services.cancelRequest(requestID, reason);
+    if (result == ResultCode::Success) {
+        std::cout << "Request " << requestID << " was cancelled. The parcel can get a new request.\n";
+    } else {
+        showService(result);
+    }
+}
+
+void serviceMenu(ServiceManager& services, const ParcelRegistry& registry) {
+    while (true) {
+        printTitle("SERVICE REQUESTS (Task 2)");
+        std::cout << "  1. Create a service request\n"
+                  << "  2. Show active requests (priority order)\n"
+                  << "  3. Show all requests\n"
+                  << "  4. View a request\n"
+                  << "  5. Start next request (highest priority)\n"
+                  << "  6. Start / resume a selected request\n"
+                  << "  7. Complete a request\n"
+                  << "  8. Cancel a request\n"
+                  << "  0. Back\n";
+        switch (readInt("Enter your choice (0-8): ", 0, 8)) {
+            case 1: createRequestMenu(services, registry); break;
+            case 2: {
+                ResultCode result = services.displayActive();
+                if (result != ResultCode::Success) showService(result);
+                break;
+            }
+            case 3: services.displayAll();               break;
+            case 4: viewRequestMenu(services);           break;
+            case 5: startNextRequestMenu(services);      break;
+            case 6: startSelectedRequestMenu(services);  break;
+            case 7: completeRequestMenu(services);       break;
+            case 8: cancelRequestMenu(services);         break;
+            case 0: return;
+        }
+        pressEnter();
+    }
+}
+
+// ======================= Resources (Task 3) =======================
+
+void showResource(ResultCode result) {
+    std::cout << resourceResultMessage(result) << "\n";
+}
+
+void registerResourceMenu(ResourceManager& resources) {
+    printTitle("REGISTER A RESOURCE");
+    std::string name = readLine("Name (counter name or staff name): ");
+    std::cout << "Type:\n  1. Collection Counter\n  2. Delivery Personnel\n";
+    ResourceType type = readInt("Choose (1-2): ", 1, 2) == 1 ? ResourceType::CollectionCounter
+                                                             : ResourceType::DeliveryPersonnel;
+    std::string id;
+    ResultCode result = resources.registerResource(name, type, id);
+    if (result == ResultCode::Success) {
+        std::cout << "Resource registered with ID " << id << " (Available).\n";
+    } else {
+        showResource(result);
+    }
+}
+
+void assignResourceMenu(ResourceManager& resources, ParcelRegistry& registry,
+                        ActivityHistory& history) {
+    printTitle("ASSIGN A RESOURCE TO A PARCEL");
+    std::string parcelID = readLine("Parcel ID: ");
+    Parcel* p = registry.findParcel(parcelID);
+    if (p == nullptr) {
+        showResource(ResultCode::NotFound);
+        return;
+    }
+    std::string resourceID = readLine("Resource ID (Enter = next available): ");
+    ResultCode result;
+    if (resourceID.empty()) {
+        result = resources.assignNextAvailable(parcelID, p->requestID, resourceID);
+    } else {
+        result = resources.assignToResource(resourceID, parcelID, p->requestID);
+    }
+    if (result == ResultCode::Success) {
+        history.recordResourceAssigned(*p);
+        std::cout << "Parcel " << parcelID << " assigned to " << p->resourceID << ".\n";
+    } else {
+        showResource(result);
+    }
+}
+
+void releaseResourceMenu(ResourceManager& resources, ParcelRegistry& registry,
+                         ActivityHistory& history) {
+    printTitle("RELEASE A RESOURCE");
+    std::string resourceID = readLine("Resource ID: ");
+    Resource* r = resources.findResource(resourceID);
+    std::string parcelID = (r != nullptr) ? r->assignedParcelID : "";
+    ResultCode result = resources.releaseResource(resourceID);
+    if (result == ResultCode::Success) {
+        Parcel* p = registry.findParcel(parcelID);
+        if (p != nullptr) {
+            history.recordResourceReleased(*p, resourceID);
+        }
+        std::cout << "Resource " << resourceID << " is Available again.\n";
+    } else {
+        showResource(result);
+    }
+}
+
+void resourceStatusMenu(ResourceManager& resources, ParcelRegistry& registry,
+                        ActivityHistory& history) {
+    printTitle("CHANGE RESOURCE STATUS");
+    std::string resourceID = readLine("Resource ID: ");
+    Resource* r = resources.findResource(resourceID);
+    if (r == nullptr) {
+        showResource(ResultCode::NotFound);
+        return;
+    }
+    std::cout << "Current status: " << resourceStatusToString(r->status) << "\n"
+              << "  1. Available\n  2. Unavailable\n";
+    ResourceStatus newStatus = readInt("Choose (1-2): ", 1, 2) == 1 ? ResourceStatus::Available
+                                                                    : ResourceStatus::Unavailable;
+    std::string parcelID = r->assignedParcelID;
+    std::string handedTo;
+    ResultCode result = resources.setResourceStatus(resourceID, newStatus, handedTo);
+    if (result != ResultCode::Success) {
+        showResource(result);
+        return;
+    }
+    std::cout << "Resource " << resourceID << " is now "
+              << resourceStatusToString(newStatus) << ".\n";
+    Parcel* p = registry.findParcel(parcelID);
+    if (p != nullptr) {
+        history.recordResourceReleased(*p, resourceID);
+        if (!handedTo.empty()) {
+            history.recordResourceAssigned(*p);
+            std::cout << "Its parcel " << parcelID << " was handed to " << handedTo << ".\n";
+        } else if (newStatus == ResourceStatus::Unavailable) {
+            std::cout << "No free resource could take parcel " << parcelID
+                      << ". Resume its request from the Service Requests menu.\n";
+        }
+    }
+}
+
+void resourceMenu(ResourceManager& resources, ParcelRegistry& registry,
+                  ActivityHistory& history) {
+    while (true) {
+        printTitle("RESOURCES (Task 3)");
+        std::cout << "  1. Register a resource\n"
+                  << "  2. Show resources\n"
+                  << "  3. Assign a resource to a parcel\n"
+                  << "  4. Release a resource\n"
+                  << "  5. Change resource status\n"
+                  << "  0. Back\n";
+        switch (readInt("Enter your choice (0-5): ", 0, 5)) {
+            case 1: registerResourceMenu(resources);                     break;
+            case 2: resources.displayResources();                        break;
+            case 3: assignResourceMenu(resources, registry, history);    break;
+            case 4: releaseResourceMenu(resources, registry, history);   break;
+            case 5: resourceStatusMenu(resources, registry, history);    break;
+            case 0: return;
+        }
+        pressEnter();
+    }
+}
+
 // ======================= Main menu =======================
 
 void printMenu() {
@@ -426,6 +759,9 @@ void printMenu() {
               << " 10. Show a parcel's history\n"
               << " 11. Review a parcel's activities\n"
               << " 12. Undo an activity\n"
+              << "SERVICES AND RESOURCES\n"
+              << " 13. Service requests...\n"
+              << " 14. Collection counters and couriers...\n"
               << "  0. Exit\n";
 }
 
@@ -433,16 +769,17 @@ void printMenu() {
 
 int main() {
     ParcelRegistry registry;
-    // Pass the ResourceManager here once Task 3 is added to the menu,
-    // so resource assignments can be undone too.
-    ActivityHistory history(registry);
+    ResourceManager resources(registry);
+    // Resources are passed in so resource assignments can be undone too
+    ActivityHistory history(registry, &resources);
+    ServiceManager services(registry, resources, &history);
     bool running = true;
 
     while (running) {
-        showDashboard(registry);
+        showDashboard(registry, services, resources);
         printMenu();
 
-        switch (readInt("Enter your choice (0-12): ", 0, 12)) {
+        switch (readInt("Enter your choice (0-14): ", 0, 14)) {
             case 1:  registerParcelMenu(registry, history); pressEnter(); break;
             case 2:  registry.displayAllParcels();          pressEnter(); break;
             case 3:  viewParcelMenu(registry);              pressEnter(); break;
@@ -455,6 +792,8 @@ int main() {
             case 10: parcelHistoryMenu(history);            pressEnter(); break;
             case 11: reviewParcelMenu(history);             pressEnter(); break;
             case 12: undoMenu(history);                     pressEnter(); break;
+            case 13: serviceMenu(services, registry);                     break;
+            case 14: resourceMenu(resources, registry, history);          break;
             case 0:
                 std::cout << "Goodbye.\n";
                 running = false;

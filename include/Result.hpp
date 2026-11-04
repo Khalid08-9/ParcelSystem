@@ -10,7 +10,9 @@ enum  ResultCode {
     Full, AllResourcesOccupied, NoResourceAvailable, AlreadyAssigned,
     WrongResourceType, ResourceUnavailable, NotAssigned,
     // Task 4: activity history
-    NotReversible, AlreadyReversed
+    NotReversible, AlreadyReversed,
+    // Task 2: service requests
+    WrongRecipient, RequestCancelled, ServiceMismatch
 };
 
 #endif
