@@ -20,6 +20,8 @@ class ParcelQueue
     public:
       ParcelQueue();
       ~ParcelQueue();
+      ParcelQueue(const ParcelQueue&) = delete;
+      ParcelQueue& operator=(const ParcelQueue&) = delete;
       bool isEmpty() const;
       int getSize() const;
       void enqueue(Parcel* p);

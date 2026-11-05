@@ -2,7 +2,7 @@
 
 **Module:** Task 1 – Parcel Intake, Sorting and Processing
 **Owner:** [Name, TP number]
-**Status:** PROPOSAL – every teammate should read this and confirm or suggest changes before the code depends on it.
+**Status:** Task 1 routing implemented; cross-module workflow requires team confirmation. See `TASK1_INTEGRATION.md` for the tested API and controller responsibilities.
 
 This document explains how a parcel moves through the system after it is registered, so that every module (Tasks 2 to 5) knows what to expect from Task 1.
 
@@ -69,12 +69,12 @@ Every status change must be checked with `canTransition(from, to)` (in `Status.h
 
 | From | Allowed next |
 |---|---|
-| `Registered` | `ReadyForCollection`, `OutForDelivery`, `SpecialHandling`, `ReturnToSender`, `OnHold`, `Missing` |
-| `SpecialHandling` | `ReadyForCollection`, `OutForDelivery`, `ReturnToSender`, `OnHold` |
+| `Registered` | `ReadyForCollection`, `OutForDelivery`, `SpecialHandling`, `ReturnToSender`, `OnHold`, `Missing`, `Cancelled` |
+| `SpecialHandling` | `ReadyForCollection`, `OutForDelivery`, `ReturnToSender`, `OnHold`, `Missing`, `Cancelled` |
 | `OnHold` | `Registered`, `ReturnToSender`, `Missing`, `Cancelled` |
-| `ReadyForCollection` | `Collected`, `ReturnToSender`, `Missing` |
-| `OutForDelivery` | `Delivered`, `ReturnToSender`, `Missing` |
-| `ReturnToSender` | `Returned` |
+| `ReadyForCollection` | `Collected`, `ReturnToSender`, `Missing`, `Cancelled` |
+| `OutForDelivery` | `Delivered`, `ReturnToSender`, `Missing`, `Cancelled` |
+| `ReturnToSender` | `Returned`, `Missing`, `Cancelled` |
 | `Missing` | `OnHold`, `Cancelled` |
 | `Collected`, `Delivered`, `Returned`, `Cancelled` | none (final states) |
 
@@ -123,6 +123,18 @@ All queues hold **pointers** to parcels. The registry owns the parcel objects, a
 | Status change not allowed by the table | `InvalidStatus` |
 | Parcel reported missing | handled as the `Missing` route |
 
+### Expected user-visible text
+
+| Exceptional condition | Expected text |
+|---|---|
+| Duplicate Parcel ID | `Error: a parcel with this ID already exists.` The current menu generates IDs automatically, so this case can only be triggered by calling the registry API with an existing ID. |
+| Invalid recipient information or missing required parcel information | `Error: required information is missing or invalid.` Names, delivery addresses and required Parcel IDs must not be blank. Recipient IDs must be uppercase `RC` followed by exactly six ASCII digits (e.g. `RC012345`). Parcel type must be Document, Small, Large or Fragile. Edits validate a supplied recipient ID before changing any fields; an empty ID keeps the existing value. |
+| Parcel reported as missing | `Parcel <ID> is now: Missing` |
+| Searching for a non-existent parcel by ID | `Error: parcel not found.` |
+| Searching for a non-existent recipient ID | `No parcels match this recipient ID.` |
+| Attempting to process an already completed parcel | `Error: this parcel is already completed.` |
+| Processing an empty waiting collection | `Error: there are no parcels waiting to be processed.` |
+
 ---
 
 ## 7. What other modules can rely on
@@ -154,4 +166,4 @@ Please answer these in a comment or at the next meeting:
 | `include/Status.hpp`, `src/Status.cpp` | status enum, `canTransition`, `isFinalStatus`, `statusToString` |
 | `include/ParcelQueue.hpp`, `src/ParcelQueue.cpp` | linked list queue |
 | `include/ParcelRegistry.hpp`, `src/ParcelRegistry.cpp` | registry, registration, display, routing |
-| `include/Interfaces.hpp` | function names shared between modules |
+| `include/Interface.hpp` | implemented Task 1 wrappers and proposed Task 2–4 contracts |

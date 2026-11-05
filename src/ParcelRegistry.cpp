@@ -6,12 +6,37 @@
 #include <iomanip>
 #include <sstream>
 #include <ctime>
+#include <cctype>
 
 ParcelRegistry::ParcelRegistry()
     : head(nullptr), tail(nullptr), nextParcelNumber(1), size(0) {}
 
 static bool isBlank(const std::string& text) {
     return text.find_first_not_of(" \t\r\n") == std::string::npos;
+}
+
+static bool isValidRecipientID(const std::string& id) {
+    if (id.size() != 8 || id[0] != 'R' || id[1] != 'C') {
+        return false;
+    }
+    for (std::size_t i = 2; i < id.size(); ++i) {
+        if (id[i] < '0' || id[i] > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool isValidParcelType(ParcelType type) {
+    switch (type) {
+        case ParcelType::Document:
+        case ParcelType::Small:
+        case ParcelType::Large:
+        case ParcelType::Fragile:
+            return true;
+        default:
+            return false;
+    }
 }
 
 ParcelRegistry::~ParcelRegistry() {
@@ -61,8 +86,9 @@ ResultCode ParcelRegistry::registerParcel(const Parcel& newParcel, std::string& 
     assignedID = "";
 
     if (isBlank(newParcel.recipientName) ||
-        isBlank(newParcel.recipientID) ||
-        isBlank(newParcel.deliveryAddress)) {
+        !isValidRecipientID(newParcel.recipientID) ||
+        isBlank(newParcel.deliveryAddress) ||
+        !isValidParcelType(newParcel.type)) {
         return ResultCode::InvalidInput;
     }
 
@@ -81,8 +107,9 @@ ResultCode ParcelRegistry::registerParcel(const Parcel& newParcel, std::string& 
 ResultCode ParcelRegistry::registerParcel(const Parcel& newParcel) {
     if (isBlank(newParcel.parcelID) ||
         isBlank(newParcel.recipientName) ||
-        isBlank(newParcel.recipientID) ||
-        isBlank(newParcel.deliveryAddress)) {
+        !isValidRecipientID(newParcel.recipientID) ||
+        isBlank(newParcel.deliveryAddress) ||
+        !isValidParcelType(newParcel.type)) {
         return ResultCode::InvalidInput;
     }
 
@@ -178,6 +205,15 @@ void ParcelRegistry::displayAllParcels() const {
 }
 
 ResultCode ParcelRegistry::routeNextParcel(RouteAction action) {
+    switch (action) {
+        case RouteAction::Default:
+        case RouteAction::ReturnToSender:
+        case RouteAction::OnHold:
+        case RouteAction::Missing:
+            break;
+        default:
+            return ResultCode::InvalidInput;
+    }
     if (waiting.isEmpty()) {
         return ResultCode::Empty;
     }
@@ -363,6 +399,12 @@ ResultCode ParcelRegistry::updateParcelDetails(const std::string& id,
         return ResultCode::InvalidInput;      // nothing to change
     }
 
+    // Empty input keeps the old ID; a supplied ID must match RC + six digits.
+    // Validate before changing any fields so failed edits are atomic.
+    if (!newRecipientID.empty() && !isValidRecipientID(newRecipientID)) {
+        return ResultCode::InvalidInput;
+    }
+
     if (!isBlank(newName))        p->recipientName = newName;
     if (!isBlank(newRecipientID)) p->recipientID = newRecipientID;
     if (!isBlank(newAddress))     p->deliveryAddress = newAddress;
@@ -464,6 +506,18 @@ ResultCode ParcelRegistry::searchByRecipientID(const std::string& recipientID) c
 
 Parcel* ParcelRegistry::peekWaiting() const {
     return waiting.peek();
+}
+
+const Parcel* ParcelRegistry::peekNextParcel(ParcelStatus status) const {
+    switch (status) {
+        case ParcelStatus::Registered:         return waiting.peek();
+        case ParcelStatus::ReadyForCollection: return collectionQueue.peek();
+        case ParcelStatus::OutForDelivery:     return deliveryQueue.peek();
+        case ParcelStatus::SpecialHandling:    return specialQueue.peek();
+        case ParcelStatus::ReturnToSender:     return returnQueue.peek();
+        case ParcelStatus::OnHold:             return holdQueue.peek();
+        default:                              return nullptr;
+    }
 }
 
 int ParcelRegistry::waitingCount() const {

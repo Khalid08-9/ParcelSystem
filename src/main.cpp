@@ -135,7 +135,7 @@ void registerParcelMenu(ParcelRegistry& registry) {
 
     Parcel p;
     p.recipientName   = readLine("Recipient name: ");
-    p.recipientID     = readLine("Recipient ID: ");
+    p.recipientID     = readLine("Recipient ID (RC + 6 digits, e.g. RC012345): ");
     p.deliveryAddress = readLine("Delivery address: ");
     p.type            = readParcelType();
 
@@ -146,6 +146,9 @@ void registerParcelMenu(ParcelRegistry& registry) {
                   << " (status Registered, added to the waiting queue).\n";
     } else {
         std::cout << describe(result) << "\n";
+        if (result == ResultCode::InvalidInput) {
+            std::cout << "Name and address must not be blank. Recipient ID must be RC followed by exactly 6 digits.\n";
+        }
     }
 }
 
@@ -352,7 +355,7 @@ void editDetailsMenu(ParcelRegistry& registry) {
 
     std::cout << "\nPress Enter to keep the current value.\n";
     std::string name    = readLine("New recipient name: ");
-    std::string recID   = readLine("New recipient ID: ");
+    std::string recID   = readLine("New recipient ID (RC + 6 digits): ");
     std::string address = readLine("New delivery address: ");
 
     ResultCode result = registry.updateParcelDetails(id, name, recID, address);
@@ -360,7 +363,7 @@ void editDetailsMenu(ParcelRegistry& registry) {
         std::cout << "Details updated.\n";
         registry.viewParcel(id);
     } else if (result == ResultCode::InvalidInput) {
-        std::cout << "Nothing to update: no new value was entered.\n";
+        std::cout << "No changes made. Enter at least one new value; a supplied recipient ID must be RC followed by exactly 6 digits.\n";
     } else {
         std::cout << describe(result) << "\n";
     }

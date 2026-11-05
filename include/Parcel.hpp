@@ -22,8 +22,8 @@ std::string parcelID;
 std::string recipientName;
 std::string  recipientID;
 std::string deliveryAddress;
-ParcelType type;
-ParcelStatus status ;
+ParcelType type = static_cast<ParcelType>(-1); // Registration requires an explicit valid type.
+ParcelStatus status = ParcelStatus::Registered;
 std::time_t arrivalTime = 0;
 std::string requestID;
 std::string resourceID;

@@ -53,13 +53,16 @@ bool canTransition(ParcelStatus from, ParcelStatus to) {
                    to == ParcelStatus::SpecialHandling ||
                    to == ParcelStatus::ReturnToSender ||
                    to == ParcelStatus::OnHold ||
-                   to == ParcelStatus::Missing;
+                   to == ParcelStatus::Missing ||
+                   to == ParcelStatus::Cancelled;
 
         case ParcelStatus::SpecialHandling:
             return to == ParcelStatus::ReadyForCollection ||
                    to == ParcelStatus::OutForDelivery ||
                    to == ParcelStatus::ReturnToSender ||
-                   to == ParcelStatus::OnHold;
+                   to == ParcelStatus::OnHold ||
+                   to == ParcelStatus::Missing ||
+                   to == ParcelStatus::Cancelled;
 
         case ParcelStatus::OnHold:
             return to == ParcelStatus::Registered ||
@@ -70,15 +73,19 @@ bool canTransition(ParcelStatus from, ParcelStatus to) {
         case ParcelStatus::ReadyForCollection:
             return to == ParcelStatus::Collected ||
                    to == ParcelStatus::ReturnToSender ||
-                   to == ParcelStatus::Missing;
+                   to == ParcelStatus::Missing ||
+                   to == ParcelStatus::Cancelled;
 
         case ParcelStatus::OutForDelivery:
             return to == ParcelStatus::Delivered ||
                    to == ParcelStatus::ReturnToSender ||
-                   to == ParcelStatus::Missing;
+                   to == ParcelStatus::Missing ||
+                   to == ParcelStatus::Cancelled;
 
         case ParcelStatus::ReturnToSender:
-            return to == ParcelStatus::Returned;
+            return to == ParcelStatus::Returned ||
+                   to == ParcelStatus::Missing ||
+                   to == ParcelStatus::Cancelled;
 
         case ParcelStatus::Missing:
             return to == ParcelStatus::OnHold ||

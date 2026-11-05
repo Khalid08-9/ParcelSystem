@@ -18,7 +18,7 @@ Parcel makeParcel(const std::string& id = "") {
     Parcel parcel{};
     parcel.parcelID = id;
     parcel.recipientName = "Test Recipient";
-    parcel.recipientID = "TEST001";
+    parcel.recipientID = "RC012345";
     parcel.deliveryAddress = "Campus";
     parcel.type = ParcelType::Document;
     return parcel;
