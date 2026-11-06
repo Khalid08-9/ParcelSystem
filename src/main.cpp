@@ -893,6 +893,71 @@ void parcelTreeMenu(ParcelRegistry& registry, ActivityHistory& history, treeNode
     }
 }
 
+// ======================= Optional test data =======================
+
+ResultCode seedDemoData(ParcelRegistry& registry, ResourceManager& resources,
+                        ActivityHistory& history) {
+    const struct {
+        const char* name;
+        const char* recipientID;
+        const char* address;
+        ParcelType type;
+    } samples[] = {
+        {"Demo Alice", "RC100001", "Block A", ParcelType::Document},
+        {"Demo Bob", "RC100002", "Block B", ParcelType::Small},
+        {"Demo Carol", "RC100003", "Block C", ParcelType::Large},
+        {"Demo David", "RC100004", "Block D", ParcelType::Fragile},
+        {"Demo Emma", "RC100005", "Block E", ParcelType::Small},
+        {"Demo Farid", "RC100006", "Block F", ParcelType::Large},
+        {"Demo Grace", "RC100007", "Library", ParcelType::Document},
+        {"Demo Hana", "RC100008", "Block H", ParcelType::Small},
+        {"Demo Ivan", "RC100009", "Block I", ParcelType::Fragile}
+    };
+
+    for (const auto& sample : samples) {
+        Parcel p;
+        p.recipientName = sample.name;
+        p.recipientID = sample.recipientID;
+        p.deliveryAddress = sample.address;
+        p.type = sample.type;
+        std::string id;
+        ResultCode result = registry.registerParcel(p, id);
+        if (result != ResultCode::Success) return result;
+        history.recordRegistration(*registry.findParcel(id));
+    }
+
+    // Route the first seven in FIFO order; leave two waiting for processing.
+    const RouteAction routes[] = {
+        RouteAction::Default, RouteAction::Default, RouteAction::Default,
+        RouteAction::Default, RouteAction::ReturnToSender,
+        RouteAction::OnHold, RouteAction::Missing
+    };
+    for (RouteAction action : routes) {
+        Parcel* p = registry.peekWaiting();
+        if (p == nullptr) return ResultCode::Empty;
+        ParcelStatus before = p->status;
+        ResultCode result = registry.routeNextParcel(action);
+        if (result != ResultCode::Success) return result;
+        history.recordStatusChange(*p, before, ActivityType::Routed);
+    }
+
+    const struct {
+        const char* name;
+        ResourceType type;
+    } demoResources[] = {
+        {"Demo Counter A", ResourceType::CollectionCounter},
+        {"Demo Counter B", ResourceType::CollectionCounter},
+        {"Demo Courier A", ResourceType::DeliveryPersonnel},
+        {"Demo Courier B", ResourceType::DeliveryPersonnel}
+    };
+    for (const auto& resource : demoResources) {
+        std::string id;
+        ResultCode result = resources.registerResource(resource.name, resource.type, id);
+        if (result != ResultCode::Success) return result;
+    }
+    return ResultCode::Success;
+}
+
 // ======================= Main menu =======================
 
 void printMenu() {
@@ -925,7 +990,24 @@ void printMenu() {
 
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+    bool seed = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string option = argv[i];
+        if (option == "--seed") {
+            seed = true;
+        } else if (option == "--help" || option == "-h") {
+            std::cout << "Usage: " << argv[0] << " [--seed]\n"
+                      << "  --seed  Start with demo parcels and resources for testing.\n"
+                      << "          Demo data is recreated each run and is not saved.\n"
+                      << "  --help  Show this help.\n";
+            return 0;
+        } else {
+            std::cerr << "Unknown option: " << option << "\nUse --help for usage.\n";
+            return 1;
+        }
+    }
+
     ParcelRegistry registry;
     static treeNode* root = nullptr;
     // Input exhaustion uses std::exit, so clean up the tree on that path too.
@@ -934,6 +1016,26 @@ int main() {
     // Resources are passed in so resource assignments can be undone too
     ActivityHistory history(registry, &resources);
     ServiceManager services(registry, resources, &history);
+    if (seed) {
+        ResultCode result = seedDemoData(registry, resources, history);
+        if (result != ResultCode::Success) {
+            std::cerr << "Could not load demo data. " << describe(result) << "\n";
+            return 1;
+        }
+        if (!synchronizeParcelTree(registry, root)) {
+            clearParcelRecords(root);
+            return 1;
+        }
+        printTitle("TEST DATA LOADED");
+        std::cout << "9 parcels and 4 available resources. No service requests created.\n"
+                  << "Data is recreated on each --seed run; changes are not saved.\n"
+                  << std::left << std::setw(12) << "Parcel ID"
+                  << std::setw(12) << "Recipient ID" << "Status\n";
+        registry.forEachParcel([](const Parcel& p) {
+            std::cout << std::left << std::setw(12) << p.parcelID
+                      << std::setw(12) << p.recipientID << statusToString(p.status) << "\n";
+        });
+    }
     bool running = true;
 
     while (running) {
