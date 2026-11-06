@@ -6,39 +6,22 @@
 #include "ParcelRegistry.hpp"
 #include "ParcelTree.hpp"
 
-// treeRemove is implemented in tree.cpp but is not yet declared in ParcelTree.hpp.
-treeNode* treeRemove(treeNode* root, const std::string& key);
-
-// tree_tests only links tree.cpp. Include these implementations here so this
-// test can exercise the registry without changing CMakeLists.txt or main.cpp.
+// The registry implementations are included here so the test target can exercise
+// the existing integration example without adding another executable.
 #include "../src/ParcelQueue.cpp"
 #include "../src/Status.cpp"
 #include "../src/ParcelRegistry.cpp"
 
 namespace {
 
-Parcel makeParcel() {
+Parcel makeParcel(const std::string& id = "") {
     Parcel parcel{};
+    parcel.parcelID = id;
     parcel.recipientName = "Test Recipient";
-    parcel.recipientID = "TEST001";
+    parcel.recipientID = "RC012345";
     parcel.deliveryAddress = "Campus";
     parcel.type = ParcelType::Document;
     return parcel;
-}
-
-void destroyTree(treeNode* root) {
-    if (root == nullptr) return;
-    destroyTree(root->left);
-    destroyTree(root->right);
-    delete root;
-}
-
-void printTree(const treeNode* root, int depth = 0) {
-    if (root == nullptr) return;
-    printTree(root->right, depth + 1);
-    for (int i = 0; i < depth; ++i) std::cout << "    ";
-    std::cout << root->parcel.parcelID << '\n';
-    printTree(root->left, depth + 1);
 }
 
 bool check(bool condition, const std::string& message) {
@@ -49,168 +32,179 @@ bool check(bool condition, const std::string& message) {
 treeNode* makeTree(std::initializer_list<std::string> ids) {
     treeNode* root = nullptr;
     for (const std::string& id : ids) {
-        Parcel parcel = makeParcel();
-        parcel.parcelID = id;
-        root = treeInsert(root, parcel);
+        if (insertParcelRecord(root, makeParcel(id)) != ResultCode::Success)
+            std::cerr << "FAIL: inserting test parcel " << id << '\n';
     }
     return root;
 }
 
-std::string treeIDs(const treeNode* root) {
-    if (root == nullptr) return "";
-    return treeIDs(root->left) + root->parcel.parcelID + " " + treeIDs(root->right);
+std::string displayedIDs(const treeNode* root, ResultCode& result) {
+    std::ostringstream output;
+    std::streambuf* original = std::cout.rdbuf(output.rdbuf());
+    result = displayParcelRecords(root);
+    std::cout.rdbuf(original);
+    return output.str();
+}
+
+bool testInsertAndSearch() {
+    treeNode* root = nullptr;
+    ResultCode displayResult;
+    bool passed = check(displayedIDs(root, displayResult).empty() &&
+                        displayResult == ResultCode::Empty,
+                        "empty tree has no records to display");
+
+    passed = check(insertParcelRecord(root, makeParcel(" \t")) == ResultCode::InvalidInput &&
+                   root == nullptr, "blank IDs are rejected") && passed;
+    Parcel incomplete = makeParcel("PCL0001");
+    incomplete.recipientName = "  ";
+    passed = check(insertParcelRecord(root, incomplete) == ResultCode::InvalidInput &&
+                   root == nullptr, "incomplete parcels are rejected") && passed;
+
+    passed = check(insertParcelRecord(root, makeParcel("PCL0002")) == ResultCode::Success &&
+                   insertParcelRecord(root, makeParcel("PCL0001")) == ResultCode::Success &&
+                   insertParcelRecord(root, makeParcel("PCL0003")) == ResultCode::Success,
+                   "valid parcels can be inserted") && passed;
+    passed = check(insertParcelRecord(root, makeParcel("PCL0002")) == ResultCode::Duplicate,
+                   "duplicate IDs are rejected") && passed;
+    passed = check(displayedIDs(root, displayResult) == "PCL0001 PCL0002 PCL0003 " &&
+                   displayResult == ResultCode::Success,
+                   "inorder traversal displays each ID once in sorted order") && passed;
+
+    const Parcel* found = nullptr;
+    passed = check(findParcelRecord(root, "PCL0001", found) == ResultCode::Success &&
+                   found != nullptr && found->recipientName == "Test Recipient",
+                   "search returns the requested parcel") && passed;
+    passed = check(findParcelRecord(root, "PCL0004", found) == ResultCode::NotFound &&
+                   found == nullptr, "missing search clears the result") && passed;
+    passed = check(findParcelRecord(root, " \t", found) == ResultCode::InvalidInput &&
+                   found == nullptr, "blank search ID is invalid") && passed;
+
+    clearParcelRecords(root);
+    passed = check(root == nullptr, "clearing the tree resets the root") && passed;
+    clearParcelRecords(root);
+    return passed;
+}
+
+bool testRemovalCase(std::initializer_list<std::string> ids,
+                     const std::string& id, const std::string& expected,
+                     const std::string& message) {
+    treeNode* root = makeTree(ids);
+    ResultCode displayResult;
+    bool passed = check(removeParcelRecord(root, id) == ResultCode::Success &&
+                        displayedIDs(root, displayResult) == expected,
+                        message);
+    clearParcelRecords(root);
+    return passed;
 }
 
 bool testTreeRemove() {
-    bool passed = check(treeRemove(nullptr, "PCL0001") == nullptr,
-                        "removing from an empty tree returns null");
-
-    treeNode* root = makeTree({"PCL0001"});
-    root = treeRemove(root, "PCL0001");
-    passed = check(root == nullptr, "removing the only node empties the tree") && passed;
-    destroyTree(root);
-
-    root = makeTree({"PCL0003", "PCL0001"});
-    root = treeRemove(root, "PCL0003");
-    passed = check(treeIDs(root) == "PCL0001 ",
-                   "removing the root replaces it with its left child") && passed;
-    destroyTree(root);
-
-    root = makeTree({"PCL0003", "PCL0005"});
-    root = treeRemove(root, "PCL0003");
-    passed = check(treeIDs(root) == "PCL0005 ",
-                   "removing the root replaces it with its right child") && passed;
-    destroyTree(root);
-
-    root = makeTree({"PCL0003", "PCL0001", "PCL0005"});
-    treeNode* originalRoot = root;
-    root = treeRemove(root, "PCL0001");
-    if (!check(root == originalRoot, "removing a leaf returns the unchanged root")) {
-        destroyTree(originalRoot);
-        return false;
-    }
-    passed = check(treeIDs(root) == "PCL0003 PCL0005 ",
-                   "removing a leaf preserves the root and other nodes") && passed;
-    destroyTree(root);
-
-    root = makeTree({"PCL0003", "PCL0001", "PCL0002", "PCL0005"});
-    originalRoot = root;
-    root = treeRemove(root, "PCL0001");
-    if (!check(root == originalRoot, "removing a right-child node returns the root")) {
-        destroyTree(originalRoot);
-        return false;
-    }
-    passed = check(treeIDs(root) == "PCL0002 PCL0003 PCL0005 " &&
-                       root != nullptr && root->left != nullptr &&
-                       root->left->parcel.parcelID == "PCL0002",
-                   "removing a node with a right child reconnects that child") && passed;
-    destroyTree(root);
-
-    root = makeTree({"PCL0003", "PCL0001", "PCL0005", "PCL0004"});
-    originalRoot = root;
-    root = treeRemove(root, "PCL0005");
-    if (!check(root == originalRoot, "removing a left-child node returns the root")) {
-        destroyTree(originalRoot);
-        return false;
-    }
-    passed = check(treeIDs(root) == "PCL0001 PCL0003 PCL0004 " &&
-                       root != nullptr && root->right != nullptr &&
-                       root->right->parcel.parcelID == "PCL0004",
-                   "removing a node with a left child reconnects that child") && passed;
-    destroyTree(root);
-
-    root = makeTree({"PCL0003", "PCL0001", "PCL0005", "PCL0004", "PCL0006"});
-    originalRoot = root;
-    root = treeRemove(root, "PCL0003");
-    if (!check(root == originalRoot, "removing a two-child root returns the root")) {
-        destroyTree(originalRoot);
-        return false;
-    }
-    passed = check(root->parcel.parcelID == "PCL0004" &&
-                       treeIDs(root) == "PCL0001 PCL0004 PCL0005 PCL0006 ",
-                   "removing a two-child root uses its inorder successor once") && passed;
-    destroyTree(root);
+    treeNode* root = nullptr;
+    bool passed = check(removeParcelRecord(root, "PCL0001") == ResultCode::NotFound &&
+                        root == nullptr, "removing from an empty tree reports NotFound");
+    passed = testRemovalCase({"PCL0001"}, "PCL0001", "",
+                "removing the only node empties the tree") && passed;
+    passed = testRemovalCase({"PCL0003", "PCL0001"}, "PCL0003", "PCL0001 ",
+                "removing a root with only a left child") && passed;
+    passed = testRemovalCase({"PCL0003", "PCL0005"}, "PCL0003", "PCL0005 ",
+                "removing a root with only a right child") && passed;
+    passed = testRemovalCase({"PCL0003", "PCL0001", "PCL0005"}, "PCL0001",
+                "PCL0003 PCL0005 ", "removing a leaf") && passed;
+    passed = testRemovalCase({"PCL0003", "PCL0001", "PCL0002", "PCL0005"},
+                "PCL0001", "PCL0002 PCL0003 PCL0005 ",
+                "removing a node with a right child") && passed;
+    passed = testRemovalCase({"PCL0003", "PCL0001", "PCL0005", "PCL0004"},
+                "PCL0005", "PCL0001 PCL0003 PCL0004 ",
+                "removing a node with a left child") && passed;
+    passed = testRemovalCase({"PCL0003", "PCL0001", "PCL0005", "PCL0004", "PCL0006"},
+                "PCL0003", "PCL0001 PCL0004 PCL0005 PCL0006 ",
+                "removing a two-child root uses its inorder successor") && passed;
 
     root = makeTree({"PCL0003", "PCL0001", "PCL0005"});
-    originalRoot = root;
-    root = treeRemove(root, "PCL0004");
-    if (!check(root == originalRoot, "removing a missing ID returns the root")) {
-        destroyTree(originalRoot);
-        return false;
-    }
-    passed = check(treeIDs(root) == "PCL0001 PCL0003 PCL0005 ",
-                   "removing a missing ID leaves the tree unchanged") && passed;
-    destroyTree(root);
+    ResultCode displayResult;
+    passed = check(removeParcelRecord(root, "PCL0004") == ResultCode::NotFound &&
+                   removeParcelRecord(root, "  ") == ResultCode::InvalidInput &&
+                   displayedIDs(root, displayResult) == "PCL0001 PCL0003 PCL0005 ",
+                   "invalid removal leaves the tree unchanged") && passed;
+    clearParcelRecords(root);
+    return passed;
+}
 
+bool testTreeUpdate() {
+    treeNode* root = makeTree({"PCL0003", "PCL0001", "PCL0005"});
+    Parcel replacement = makeParcel("PCL0001");
+    replacement.recipientName = "Updated Recipient";
+    replacement.deliveryAddress = "New Address";
+
+    bool passed = check(updateParcelRecord(root, "PCL0001", replacement) == ResultCode::Success,
+                        "updating an existing parcel succeeds");
+    const Parcel* found = nullptr;
+    passed = check(findParcelRecord(root, "PCL0001", found) == ResultCode::Success &&
+                   found != nullptr && found->recipientName == "Updated Recipient" &&
+                   found->deliveryAddress == "New Address",
+                   "updating an existing parcel replaces its details") && passed;
+
+    replacement.parcelID = "PCL0002";
+    passed = check(updateParcelRecord(root, "PCL0002", replacement) == ResultCode::NotFound,
+                   "updating a missing parcel reports NotFound") && passed;
+    replacement.parcelID = "PCL0009";
+    passed = check(updateParcelRecord(root, "PCL0001", replacement) == ResultCode::InvalidInput,
+                   "updating cannot change the tree key") && passed;
+    replacement.parcelID = "PCL0001";
+    replacement.deliveryAddress = "  ";
+    passed = check(updateParcelRecord(root, "PCL0001", replacement) == ResultCode::InvalidInput,
+                   "updating cannot erase required details") && passed;
+    replacement.deliveryAddress = "New Address";
+    passed = check(updateParcelRecord(root, " ", replacement) == ResultCode::InvalidInput &&
+                   updateParcelRecord(nullptr, "PCL0001", replacement) == ResultCode::NotFound,
+                   "blank ID and empty tree are handled") && passed;
+
+    ResultCode displayResult;
+    passed = check(displayedIDs(root, displayResult) == "PCL0001 PCL0003 PCL0005 " &&
+                   findParcelRecord(root, "PCL0001", found) == ResultCode::Success &&
+                   found->recipientName == "Updated Recipient",
+                   "rejected updates leave the tree unchanged") && passed;
+    clearParcelRecords(root);
+    return passed;
+}
+
+bool testRegistryCopy() {
+    ParcelRegistry registry;
+    treeNode* root = nullptr;
+    std::string ids[5];
+    bool passed = true;
+    for (int i = 0; i < 5; ++i) {
+        passed = check(registry.registerParcel(makeParcel(), ids[i]) == ResultCode::Success,
+                       "registry accepts a valid parcel") && passed;
+    }
+    const int insertionOrder[] = {2, 0, 4, 1, 3};
+    for (int index : insertionOrder) {
+        Parcel* registered = registry.findParcel(ids[index]);
+        passed = check(registered != nullptr &&
+                       insertParcelRecord(root, *registered) == ResultCode::Success,
+                       "tree accepts a copy of a registered parcel") && passed;
+    }
+    ResultCode displayResult;
+    passed = check(displayedIDs(root, displayResult) ==
+                   "PCL0001 PCL0002 PCL0003 PCL0004 PCL0005 ",
+                   "registry records inserted out of order display in order") && passed;
+
+    passed = check(registry.updateParcelDetails(ids[2], "Updated Recipient", "", "")
+                   == ResultCode::Success, "registry details can be updated") && passed;
+    const Parcel* treeCopy = nullptr;
+    passed = check(findParcelRecord(root, ids[2], treeCopy) == ResultCode::Success &&
+                   treeCopy != nullptr && treeCopy->recipientName == "Test Recipient",
+                   "tree copies do not automatically sync with registry updates") && passed;
+    clearParcelRecords(root);
     return passed;
 }
 
 } // namespace
 
 int main() {
-    std::ostringstream output;
-    std::streambuf* original = std::cout.rdbuf(output.rdbuf());
-    inorderTraversal(nullptr);
-    std::cout.rdbuf(original);
-    bool passed = check(output.str().empty(), "empty tree should print nothing");
-
-    ParcelRegistry registry;
-    std::string ids[5];
-    for (int i = 0; i < 5; ++i) {
-        passed = check(registry.registerParcel(makeParcel(), ids[i]) == ResultCode::Success,
-                       "registry accepts a valid parcel") && passed;
-        passed = check(ids[i] == "PCL000" + std::to_string(i + 1),
-                       "registry assigns the expected ID") && passed;
-    }
-    passed = check(registry.getSize() == 5 && registry.waitingCount() == 5,
-                   "registry contains five waiting parcels") && passed;
-
-    // Insert registry records out of order to exercise both sides of the tree.
-    // This is an explicit copy, not automatic registry/tree integration.
-    treeNode* root = nullptr;
-    const int insertionOrder[] = {2, 0, 4, 1, 3};
-    for (int index : insertionOrder) {
-        Parcel* registered = registry.findParcel(ids[index]);
-        passed = check(registered != nullptr, "findParcel locates the registered ID") && passed;
-        if (registered != nullptr) root = treeInsert(root, *registered);
-    }
-
-    passed = check(root != nullptr, "inserting into an empty tree creates a root") && passed;
-    if (root != nullptr) {
-        passed = check(root->parcel.parcelID == "PCL0003", "root keeps its parcel") && passed;
-        passed = check(root->parcel.recipientName == "Test Recipient", "parcel details are copied") && passed;
-        passed = check(root->left != nullptr && root->left->parcel.parcelID == "PCL0001",
-                       "smaller IDs go left") && passed;
-        passed = check(root->right != nullptr && root->right->parcel.parcelID == "PCL0005",
-                       "larger IDs go right") && passed;
-    }
-
-    output.str("");
-    output.clear();
-    original = std::cout.rdbuf(output.rdbuf());
-    inorderTraversal(root);
-    std::cout.rdbuf(original);
-    passed = check(output.str() == "PCL0001 PCL0002 PCL0003 PCL0004 PCL0005 ",
-                   "inorder traversal prints IDs in sorted order") && passed;
-
-    std::cout << "Tree built from ParcelRegistry records (larger IDs above smaller IDs):\n";
-    printTree(root);
-    std::cout << "Inorder: " << output.str() << '\n';
-
-    passed = check(registry.updateParcelDetails(ids[2], "Updated Recipient", "", "")
-                       == ResultCode::Success,
-                   "registry can update a registered parcel") && passed;
-    Parcel* updated = registry.findParcel(ids[2]);
-    passed = check(updated != nullptr && updated->recipientName == "Updated Recipient",
-                   "registry record reflects the update") && passed;
-    if (root != nullptr) {
-        passed = check(root->parcel.recipientName == "Test Recipient",
-                       "tree holds a copy; registry updates do not sync automatically") && passed;
-    }
-    std::cout << "Note: tree records are copies; registry updates do not sync to the tree.\n";
-
-    destroyTree(root);
+    bool passed = testInsertAndSearch();
     passed = testTreeRemove() && passed;
+    passed = testTreeUpdate() && passed;
+    passed = testRegistryCopy() && passed;
     if (passed) std::cout << "Tree tests passed.\n";
     return passed ? 0 : 1;
 }

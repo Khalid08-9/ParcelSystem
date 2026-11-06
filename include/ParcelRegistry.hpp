@@ -24,6 +24,9 @@ private:
 public:
     ParcelRegistry();
     ~ParcelRegistry();
+    // This class owns its parcels and queues; sharing requires a reference, not a copy.
+    ParcelRegistry(const ParcelRegistry&) = delete;
+    ParcelRegistry& operator=(const ParcelRegistry&) = delete;
 
     ResultCode registerParcel(const Parcel& newParcel);
     ResultCode registerParcel(const Parcel& newParcel, std::string& assignedID);
@@ -41,9 +44,13 @@ public:
                                const std::string& newAddress);
     ResultCode removeParcel(const std::string& id);
     // Task 4 undo only: moves a parcel back to an earlier status and queue.
-    // Skips canTransition on purpose; ActivityHistory checks the undo is safe.
+    // Requires a non-final parcel with no active request or resource.
     ResultCode restoreStatus(const std::string& id, ParcelStatus oldStatus);
+    ResultCode searchByStatus(ParcelStatus status) const;
+    ResultCode searchByRecipientID(const std::string& recipientID) const;
     Parcel* peekWaiting() const;
+    // Read-only handoff: status updates, not consumers, remove parcels from queues.
+    const Parcel* peekNextParcel(ParcelStatus status) const;
     int waitingCount() const;
     int collectionCount() const;
     int deliveryCount() const;
