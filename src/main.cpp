@@ -6,6 +6,7 @@
 #include <limits>
 #include <string>
 #include "ParcelRegistry.hpp"
+#include "ParcelTree.hpp"
 #include "ActivityHistory.hpp"
 #include "ResourceManager.hpp"
 #include "ServiceManager.hpp"
@@ -99,6 +100,23 @@ std::string describe(ResultCode code) {
     }
 }
 
+// The registry is authoritative; the tree stores independent copies.
+bool synchronizeParcelTree(const ParcelRegistry& registry, treeNode*& root) {
+    ResultCode result = ResultCode::Success;
+    registry.forEachParcel([&](const Parcel& p) {
+        if (result != ResultCode::Success) return;
+        result = updateParcelRecord(root, p.parcelID, p);
+        if (result == ResultCode::NotFound) {
+            result = insertParcelRecord(root, p);
+        }
+    });
+    if (result != ResultCode::Success) {
+        std::cout << "Error: could not synchronize the parcel tree. " << describe(result) << "\n";
+        return false;
+    }
+    return true;
+}
+
 // Summary shown above the main menu
 void showDashboard(const ParcelRegistry& registry, const ServiceManager& services,
                    const ResourceManager& resources) {
@@ -139,7 +157,7 @@ ParcelType readParcelType() {
     }
 }
 
-void registerParcelMenu(ParcelRegistry& registry, ActivityHistory& history) {
+void registerParcelMenu(ParcelRegistry& registry, ActivityHistory& history, treeNode*& root) {
     printTitle("REGISTER A NEW PARCEL");
     std::cout << "The Parcel ID is created automatically.\n";
 
@@ -152,6 +170,13 @@ void registerParcelMenu(ParcelRegistry& registry, ActivityHistory& history) {
     std::string assignedID;                       // filled in by the registry
     ResultCode result = registry.registerParcel(p, assignedID);
     if (result == ResultCode::Success) {
+        ResultCode inserted = insertParcelRecord(root, *registry.findParcel(assignedID));
+        if (inserted != ResultCode::Success) {
+            registry.removeParcel(assignedID);
+            std::cout << "Registration cancelled: could not insert the parcel into the tree. "
+                      << describe(inserted) << "\n";
+            return;
+        }
         history.recordRegistration(*registry.findParcel(assignedID));
         std::cout << "Parcel registered with ID " << assignedID
                   << " (status Registered, added to the waiting queue).\n";
@@ -396,7 +421,7 @@ void editDetailsMenu(ParcelRegistry& registry, ActivityHistory& history) {
 }
 
 // Permanently removes a parcel after showing it and asking for confirmation
-void removeParcelMenu(ParcelRegistry& registry, ActivityHistory& history) {
+void removeParcelMenu(ParcelRegistry& registry, ActivityHistory& history, treeNode*& root) {
     printTitle("REMOVE A PARCEL");
 
     std::string id = readLine("Parcel ID: ");
@@ -415,7 +440,13 @@ void removeParcelMenu(ParcelRegistry& registry, ActivityHistory& history) {
     Parcel removed = *registry.findParcel(id);   // copy kept for the history
     ResultCode result = registry.removeParcel(id);
     if (result == ResultCode::Success) {
+        ResultCode removedFromTree = removeParcelRecord(root, id);
         history.recordRemoval(removed);
+        if (removedFromTree != ResultCode::Success) {
+            std::cout << "Error: parcel removed from the registry, but tree removal failed. "
+                      << describe(removedFromTree) << "\n";
+            return;
+        }
         std::cout << "Parcel " << id << " was removed.\n";
     } else if (result == ResultCode::InvalidStatus) {
         std::cout << "Error: this parcel is linked to a service request or resource "
@@ -648,7 +679,7 @@ void cancelRequestMenu(ServiceManager& services) {
     }
 }
 
-void serviceMenu(ServiceManager& services, const ParcelRegistry& registry) {
+void serviceMenu(ServiceManager& services, const ParcelRegistry& registry, treeNode*& root) {
     while (true) {
         printTitle("SERVICE REQUESTS (Task 2)");
         std::cout << "  1. Create a service request\n"
@@ -675,6 +706,7 @@ void serviceMenu(ServiceManager& services, const ParcelRegistry& registry) {
             case 8: cancelRequestMenu(services);         break;
             case 0: return;
         }
+        if (!synchronizeParcelTree(registry, root)) return;
         pressEnter();
     }
 }
@@ -778,7 +810,7 @@ void resourceStatusMenu(ResourceManager& resources, ParcelRegistry& registry,
 }
 
 void resourceMenu(ResourceManager& resources, ParcelRegistry& registry,
-                  ActivityHistory& history) {
+                  ActivityHistory& history, treeNode*& root) {
     while (true) {
         printTitle("RESOURCES (Task 3)");
         std::cout << "  1. Register a resource\n"
@@ -795,6 +827,68 @@ void resourceMenu(ResourceManager& resources, ParcelRegistry& registry,
             case 5: resourceStatusMenu(resources, registry, history);    break;
             case 0: return;
         }
+        if (!synchronizeParcelTree(registry, root)) return;
+        pressEnter();
+    }
+}
+
+// ======================= Parcel organisation (Task 5) =======================
+
+void searchParcelTreeMenu(const treeNode* root) {
+    printTitle("SEARCH THE PARCEL TREE");
+
+    const Parcel* p = nullptr;
+    ResultCode result = findParcelRecord(root, readLine("Parcel ID: "), p);
+    if (result != ResultCode::Success) {
+        std::cout << describe(result) << "\n";
+        return;
+    }
+
+    std::cout << "\nTREE PARCEL DETAILS\n"
+              << std::string(40, '-') << "\n"
+              << "Parcel ID:        " << p->parcelID << "\n"
+              << "Recipient name:   " << p->recipientName << "\n"
+              << "Recipient ID:     " << p->recipientID << "\n"
+              << "Delivery address: " << p->deliveryAddress << "\n"
+              << "Type:             " << typeToString(p->type) << "\n"
+              << "Status:           " << statusToString(p->status) << "\n"
+              << "Request ID:       " << (p->requestID.empty() ? "None" : p->requestID) << "\n"
+              << "Resource ID:      " << (p->resourceID.empty() ? "None" : p->resourceID) << "\n"
+              << std::string(40, '-') << "\n";
+}
+
+void parcelTreeMenu(ParcelRegistry& registry, ActivityHistory& history, treeNode*& root) {
+    while (true) {
+        printTitle("PARCEL ORGANISATION (Task 5)");
+        std::cout << "Records are organised by Parcel ID.\n"
+                  << "  1. Display parcel IDs in sorted order\n"
+                  << "  2. Search for a parcel in the tree\n"
+                  << "  3. Register and insert a parcel\n"
+                  << "  4. Edit parcel details\n"
+                  << "  5. Update parcel status\n"
+                  << "  6. Remove a parcel\n"
+                  << "  0. Back\n";
+        switch (readInt("Enter your choice (0-6): ", 0, 6)) {
+            case 1: {
+                printTitle("PARCEL TREE (SORTED BY PARCEL ID)");
+                ResultCode result = displayParcelRecords(root);
+                if (result == ResultCode::Empty) {
+                    std::cout << "The parcel tree is empty.\n";
+                } else if (result != ResultCode::Success) {
+                    std::cout << describe(result) << "\n";
+                } else {
+                    std::cout << "\n";
+                }
+                break;
+            }
+            case 2: searchParcelTreeMenu(root);                  break;
+            case 3: registerParcelMenu(registry, history, root); break;
+            case 4: editDetailsMenu(registry, history);          break;
+            case 5: updateStatusMenu(registry, history);         break;
+            case 6: removeParcelMenu(registry, history, root);   break;
+            case 0: return;
+        }
+        if (!synchronizeParcelTree(registry, root)) return;
         pressEnter();
     }
 }
@@ -824,6 +918,8 @@ void printMenu() {
               << "SERVICES AND RESOURCES\n"
               << "  15. Service requests...\n"
               << "  16. Collection counters and couriers...\n"
+              << "PARCEL ORGANISATION\n"
+              << "  17. Parcel tree...\n"
               << "   0. Exit\n";
 }
 
@@ -831,6 +927,9 @@ void printMenu() {
 
 int main() {
     ParcelRegistry registry;
+    static treeNode* root = nullptr;
+    // Input exhaustion uses std::exit, so clean up the tree on that path too.
+    std::atexit([] { clearParcelRecords(root); });
     ResourceManager resources(registry);
     // Resources are passed in so resource assignments can be undone too
     ActivityHistory history(registry, &resources);
@@ -841,8 +940,8 @@ int main() {
         showDashboard(registry, services, resources);
         printMenu();
 
-        switch (readInt("Enter your choice (0-16): ", 0, 16)) {
-            case 1:  registerParcelMenu(registry, history); pressEnter(); break;
+        switch (readInt("Enter your choice (0-17): ", 0, 17)) {
+            case 1:  registerParcelMenu(registry, history, root); pressEnter(); break;
             case 2:  registry.displayAllParcels();          pressEnter(); break;
             case 3:  viewParcelMenu(registry);              pressEnter(); break;
             case 4:  searchByStatusMenu(registry);          pressEnter(); break;
@@ -851,18 +950,24 @@ int main() {
             case 7:  processAllMenu(registry, history);     pressEnter(); break;
             case 8:  updateStatusMenu(registry, history);   pressEnter(); break;
             case 9:  editDetailsMenu(registry, history);    pressEnter(); break;
-            case 10: removeParcelMenu(registry, history);   pressEnter(); break;
+            case 10: removeParcelMenu(registry, history, root);   pressEnter(); break;
             case 11: recentActivitiesMenu(history);         pressEnter(); break;
             case 12: parcelHistoryMenu(history);            pressEnter(); break;
             case 13: reviewParcelMenu(history);             pressEnter(); break;
             case 14: undoMenu(history);                     pressEnter(); break;
-            case 15: serviceMenu(services, registry);                     break;
-            case 16: resourceMenu(resources, registry, history);          break;
+            case 15: serviceMenu(services, registry, root);                     break;
+            case 16: resourceMenu(resources, registry, history, root);          break;
+            case 17: parcelTreeMenu(registry, history, root);                   break;
             case 0:
                 std::cout << "Goodbye.\n";
                 running = false;
                 break;
         }
+        if (!synchronizeParcelTree(registry, root)) {
+            clearParcelRecords(root);
+            return 1;
+        }
     }
+    clearParcelRecords(root);
     return 0;
 }

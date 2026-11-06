@@ -35,6 +35,13 @@ public:
     bool isEmpty() const;
     void clear();
     void displayAllParcels() const ;
+    // Read-only traversal for keeping the Task 5 tree copies up to date.
+    template <typename Visitor>
+    void forEachParcel(Visitor visit) const {
+        for (const Parcel* current = head; current != nullptr; current = current->next) {
+            visit(*current);
+        }
+    }
     ResultCode routeNextParcel(RouteAction action);
     ResultCode viewParcel(const std::string& parcelID) const;
     ResultCode updateParcelStatus(const std::string& id, ParcelStatus newStatus);
