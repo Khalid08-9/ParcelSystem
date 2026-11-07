@@ -163,7 +163,15 @@ void registerParcelMenu(ParcelRegistry& registry, ActivityHistory& history, tree
 
     Parcel p;
     p.recipientName   = readLine("Recipient name: ");
-    p.recipientID     = readLine("Recipient ID (RC + 6 digits, e.g. RC012345): ");
+    while (true) {
+        p.recipientID = readLine("Recipient ID (RC + 6 digits, e.g. RC012345): ");
+        if (p.recipientID.size() == 8 &&
+            p.recipientID.compare(0, 2, "RC") == 0 &&
+            p.recipientID.find_first_not_of("0123456789", 2) == std::string::npos) {
+            break;
+        }
+        std::cout << "Recipient ID must be RC followed by exactly 6 digits. Please try again.\n";
+    }
     p.deliveryAddress = readLine("Delivery address: ");
     p.type            = readParcelType();
 
