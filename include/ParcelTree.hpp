@@ -12,5 +12,7 @@ ResultCode findParcelRecord(const treeNode* root, const std::string& id, const P
 ResultCode displayParcelRecords(const treeNode* root);
 ResultCode removeParcelRecord(treeNode*& root, const std::string& id);
 ResultCode updateParcelRecord(treeNode* root, const std::string& id, const Parcel& replacement);
+// Rebalance existing nodes without invalidating parcel pointers. Empty trees return Empty.
+ResultCode balanceParcelRecords(treeNode*& root);
 void clearParcelRecords(treeNode*& root);
 #endif

@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <iostream>
 
 #include "ParcelTree.hpp"
@@ -85,6 +86,39 @@ namespace {
         return root;
     }
 
+    std::size_t flattenTree(treeNode *&root) {
+        // Right rotations turn the BST into a sorted, right-only chain.
+        // Iterate rather than recurse so a skewed tree does not exhaust the stack.
+        std::size_t count = 0;
+        treeNode **link = &root;
+        while (*link != nullptr) {
+            treeNode *node = *link;
+            if (node->left != nullptr) {
+                treeNode *left = node->left;
+                node->left = left->right;
+                left->right = node;
+                *link = left;
+            } else {
+                ++count;
+                link = &node->right;
+            }
+        }
+        return count;
+    }
+
+    treeNode *buildBalancedTree(treeNode *&next, std::size_t count) {
+        if (count == 0) return nullptr;
+
+        // Consume the sorted chain in order, using its middle node as the root.
+        const std::size_t leftCount = count / 2;
+        treeNode *left = buildBalancedTree(next, leftCount);
+        treeNode *root = next;
+        next = next->right;
+        root->left = left;
+        root->right = buildBalancedTree(next, count - leftCount - 1);
+        return root;
+    }
+
     void clearTree(treeNode *root) {
         if (root == nullptr) return;
         clearTree(root->left);
@@ -130,6 +164,14 @@ ResultCode updateParcelRecord(treeNode *root, const std::string &id, const Parce
     if (node == nullptr) return ResultCode::NotFound;
     node->parcel = replacement;
     node->parcel.next = nullptr;
+    return ResultCode::Success;
+}
+
+ResultCode balanceParcelRecords(treeNode *&root) {
+    if (root == nullptr) return ResultCode::Empty;
+    const std::size_t count = flattenTree(root);
+    treeNode *next = root;
+    root = buildBalancedTree(next, count);
     return ResultCode::Success;
 }
 
