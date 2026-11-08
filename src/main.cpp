@@ -107,6 +107,9 @@ bool synchronizeParcelTree(const ParcelRegistry& registry, treeNode*& root) {
         result = updateParcelRecord(root, p.parcelID, p);
         if (result == ResultCode::NotFound) {
             result = insertParcelRecord(root, p);
+            if (result == ResultCode::Success) {
+                result = balanceParcelRecords(root);
+            }
         }
     });
     if (result != ResultCode::Success) {
@@ -185,6 +188,7 @@ void registerParcelMenu(ParcelRegistry& registry, ActivityHistory& history, tree
                       << describe(inserted) << "\n";
             return;
         }
+        balanceParcelRecords(root);
         history.recordRegistration(*registry.findParcel(assignedID));
         std::cout << "Parcel registered with ID " << assignedID
                   << " (status Registered, added to the waiting queue).\n";
@@ -490,6 +494,7 @@ void removeParcelMenu(ParcelRegistry& registry, ActivityHistory& history, treeNo
                       << describe(removedFromTree) << "\n";
             return;
         }
+        if (root != nullptr) balanceParcelRecords(root);
         std::cout << "Parcel " << id << " was removed.\n";
     } else if (result == ResultCode::InvalidStatus) {
         std::cout << "Error: this parcel is linked to a service request or resource "

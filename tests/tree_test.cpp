@@ -167,6 +167,67 @@ bool testTreeUpdate() {
     return passed;
 }
 
+bool testTreeBalance() {
+    treeNode* root = nullptr;
+    bool passed = check(balanceParcelRecords(root) == ResultCode::Empty && root == nullptr,
+                        "balancing an empty tree reports Empty");
+
+    // Include odd/even sizes, both skew directions, and already-balanced trees.
+    for (int count = 1; count <= 32; ++count) {
+        for (bool descending : {false, true}) {
+            const Parcel* originals[32]{};
+            for (int i = 0; i < count; ++i) {
+                const int index = descending ? count - i - 1 : i;
+                Parcel parcel = makeParcel("PCL" + std::to_string(1000 + index));
+                parcel.recipientName += std::to_string(index);
+                parcel.requestID = "REQ" + std::to_string(index);
+                parcel.resourceID = "RES" + std::to_string(index);
+                passed = check(insertParcelRecord(root, parcel) == ResultCode::Success,
+                               "insert a record before balancing") && passed;
+                passed = check(findParcelRecord(root, parcel.parcelID, originals[index])
+                               == ResultCode::Success,
+                               "save the original parcel pointer") && passed;
+            }
+
+            ResultCode displayResult;
+            const std::string before = displayedIDs(root, displayResult);
+            treeNode* previousRoot = root;
+            for (int repeat = 0; repeat < 2; ++repeat) {
+                passed = check(balanceParcelRecords(root) == ResultCode::Success,
+                               "balancing a nonempty tree succeeds") && passed;
+                if (repeat == 0 && count >= 3)
+                    passed = check(root != previousRoot,
+                                   "balancing replaces the root of a skewed tree") && passed;
+                passed = check(displayedIDs(root, displayResult) == before &&
+                               displayResult == ResultCode::Success,
+                               "balancing preserves sorted records") && passed;
+                for (int i = 0; i < count; ++i) {
+                    const Parcel* found = nullptr;
+                    passed = check(findParcelRecord(root, "PCL" + std::to_string(1000 + i),
+                                                    found) == ResultCode::Success &&
+                                   found != nullptr && found == originals[i] &&
+                                   found->recipientName == "Test Recipient" + std::to_string(i) &&
+                                   found->requestID == "REQ" + std::to_string(i) &&
+                                   found->resourceID == "RES" + std::to_string(i) &&
+                                   found->next == nullptr,
+                                   "balancing preserves parcel pointers and details") && passed;
+                }
+            }
+
+            Parcel replacement = makeParcel("PCL1000");
+            replacement.recipientName = "Updated after balancing";
+            passed = check(updateParcelRecord(root, replacement.parcelID, replacement)
+                           == ResultCode::Success &&
+                           removeParcelRecord(root, replacement.parcelID) == ResultCode::Success &&
+                           insertParcelRecord(root, replacement) == ResultCode::Success &&
+                           insertParcelRecord(root, replacement) == ResultCode::Duplicate,
+                           "updates, removal, insertion and duplicate checks work after balancing") && passed;
+            clearParcelRecords(root);
+        }
+    }
+    return passed;
+}
+
 bool testRegistryCopy() {
     ParcelRegistry registry;
     treeNode* root = nullptr;
@@ -204,6 +265,7 @@ int main() {
     bool passed = testInsertAndSearch();
     passed = testTreeRemove() && passed;
     passed = testTreeUpdate() && passed;
+    passed = testTreeBalance() && passed;
     passed = testRegistryCopy() && passed;
     if (passed) std::cout << "Tree tests passed.\n";
     return passed ? 0 : 1;
